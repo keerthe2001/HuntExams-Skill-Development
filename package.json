@@ -1,0 +1,13 @@
+{
+  "name": "huntexams",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "pnpm --filter @huntexams/web dev",
+    "build": "pnpm --filter @huntexams/web build",
+    "typecheck": "pnpm --filter @huntexams/web typecheck",
+    "test": "pnpm --filter @huntexams/web test",
+    "check-content": "cd web && node scripts/check-content.mjs ../api/content"
+  }
+}
