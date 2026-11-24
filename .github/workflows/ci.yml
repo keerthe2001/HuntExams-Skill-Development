@@ -35,9 +35,9 @@ jobs:
       - run: uv run ruff format --check .
       - name: Curriculum content is valid
         run: uv run python -m app.seed --check
-      - run: uv run pytest -q
-      - name: Migrations match models
+      - name: Migrations match models (fresh database, before tests create tables)
         run: uv run alembic upgrade head && uv run alembic check
+      - run: uv run pytest -q
 
   web:
     runs-on: ubuntu-latest
