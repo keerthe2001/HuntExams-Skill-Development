@@ -182,6 +182,7 @@ export function Legal({ kind }: { kind: "about" | "privacy" | "terms" }) {
       "We store your name, email, a hash of your password, your onboarding answers and your learning progress so the product works. We don't sell your data.",
       "Python you run in labs executes in your own browser. Code you save in labs is stored with your progress so you can resume.",
       "Project links you submit are visible to reviewers. Certificates show your name and are publicly verifiable by their ID, because that's their purpose.",
+      "Our links page (huntexams.com/links) counts page views and link taps so we know which resources help. We don't store your IP address or browser details: each visit gets an anonymous ID that is a one-way hash and changes every day, so you can't be followed across days. We also keep the campaign tag in the link (like ?src=insta), the referring website's name, your country, your device type (phone, tablet or desktop) and your browser family. Raw visit records are deleted after 13 months; only daily totals are kept.",
       "If ads are enabled in future, Google may use cookies to show them. Learning screens never show ads. Ask us to delete your account at any time." ] },
     terms: { h: "Terms", p: [
       "Use HuntExams to learn. Don't submit work that isn't yours, and don't try to break or overload the service.",

@@ -10,9 +10,21 @@ import { timeAgo, useTitle } from "@/lib/util";
 
 const KINDS = ["topic", "lab", "project", "guide"] as const;
 
-function AdminTabs() {
-  const tabs = [["/admin", "Overview"], ["/admin/content/topic", "Content"], ["/admin/reviews", "Mission reviews"], ["/admin/ads", "Ads"], ["/admin/users", "Users"], ["/admin/audit", "Audit log"]];
-  return <nav className="admin-tabs" aria-label="Admin">{tabs.map(([to, l]) => <NavLink key={to} to={to!} end={to === "/admin"} className={({ isActive }) => (isActive ? "on" : "")}>{l}</NavLink>)}</nav>;
+/** Admin pages are never indexed (the server also sends X-Robots-Tag: noindex). */
+function useNoIndex() {
+  useEffect(() => {
+    const m = document.createElement("meta");
+    m.name = "robots";
+    m.content = "noindex, nofollow";
+    document.head.appendChild(m);
+    return () => m.remove();
+  }, []);
+}
+
+export function AdminTabs() {
+  useNoIndex();
+  const tabs = [["/admin", "Overview"], ["/admin/content/topic", "Content"], ["/admin/links", "Links page"], ["/admin/reviews", "Mission reviews"], ["/admin/ads", "Ads"], ["/admin/users", "Users"], ["/admin/audit", "Audit log"]];
+  return <nav className="admin-tabs" aria-label="Admin">{tabs.map(([to, l]) => <NavLink key={to} to={to!} end={to === "/admin" || to!.startsWith("/admin/content")} className={({ isActive }) => (isActive ? "on" : "")}>{l}</NavLink>)}</nav>;
 }
 
 export function AdminOverview() {

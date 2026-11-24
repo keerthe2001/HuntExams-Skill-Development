@@ -9,3 +9,5 @@ def test_old_huntexams_urls_redirect() -> None:
     assert legacy_target("start") == "/signup"
     assert legacy_target("learn/rag-architecture") is None
     assert legacy_target("startup") is None
+    assert legacy_target("links") is None
+    assert legacy_target("go/abc") is None

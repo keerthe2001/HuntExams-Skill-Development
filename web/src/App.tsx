@@ -19,6 +19,11 @@ const AdminReviews = lazy(() => admin().then((m) => ({ default: m.AdminReviews }
 const AdminAds = lazy(() => admin().then((m) => ({ default: m.AdminAds })));
 const AdminUsers = lazy(() => admin().then((m) => ({ default: m.AdminUsers })));
 const AdminAudit = lazy(() => admin().then((m) => ({ default: m.AdminAudit })));
+const links = () => import("@/pages/AdminLinks");
+const AdminLinksAnalytics = lazy(() => links().then((m) => ({ default: m.AdminLinksAnalytics })));
+const AdminLinksItems = lazy(() => links().then((m) => ({ default: m.AdminLinksItems })));
+const AdminLinksSettings = lazy(() => links().then((m) => ({ default: m.AdminLinksSettings })));
+const AdminLinksCampaigns = lazy(() => links().then((m) => ({ default: m.AdminLinksCampaigns })));
 /** Signed-in, onboarded learners see pages like the roadmap inside the app shell. */
 function Shell() {
   const { user } = useSession();
@@ -64,6 +69,10 @@ export function App() {
             <Route path="admin/reviews" element={<RequireAuth admin><AdminReviews /></RequireAuth>} />
             <Route path="admin/ads" element={<RequireAuth admin><AdminAds /></RequireAuth>} />
             <Route path="admin/users" element={<RequireAuth admin><AdminUsers /></RequireAuth>} />
+            <Route path="admin/links" element={<RequireAuth admin><AdminLinksAnalytics /></RequireAuth>} />
+            <Route path="admin/links/items" element={<RequireAuth admin><AdminLinksItems /></RequireAuth>} />
+            <Route path="admin/links/settings" element={<RequireAuth admin><AdminLinksSettings /></RequireAuth>} />
+            <Route path="admin/links/campaigns" element={<RequireAuth admin><AdminLinksCampaigns /></RequireAuth>} />
             <Route path="admin/audit" element={<RequireAuth admin><AdminAudit /></RequireAuth>} />
           </Route>
           {/* Focus screens: no site chrome, so nothing competes with the lesson. */}

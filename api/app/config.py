@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     content_dir: str = "content"
     seed_content_on_startup: bool = True
 
+    # Link-in-bio page (/links). The salt keys the daily visitor id; it falls back to
+    # secret_key when unset.
+    links_owner_handle: str = "keertheology"
+    links_salt: str | None = None
+
     # Built web app (Vite dist). When set, the API also serves the website from the same
     # origin, which is how the single-service Render deployment works.
     web_dist: str | None = None

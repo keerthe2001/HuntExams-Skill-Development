@@ -6,12 +6,14 @@ admin and stored here. Lesson bodies are structured JSON documents validated on 
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -383,3 +385,127 @@ class AuditLog(Base):
     target: Mapped[str] = mapped_column(String(160))
     detail: Mapped[dict[str, Any]] = mapped_column(JsonDoc, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---------------------------------------------------------------- link-in-bio (/links)
+# Events store no raw IP or user agent: only a visitor id that changes every day.
+
+NIL_ITEM = uuid.UUID(int=0)  # link_daily rows for page views (no item)
+
+
+class LinkCreator(Timestamped, Base):
+    __tablename__ = "link_creators"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    handle: Mapped[str] = mapped_column(String(40), unique=True)
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    name: Mapped[str] = mapped_column(String(80))
+    tagline: Mapped[str] = mapped_column(String(160), default="")
+    bio: Mapped[str] = mapped_column(Text, default="")
+    avatar_url: Mapped[str | None] = mapped_column(String(500))
+    logo_url: Mapped[str | None] = mapped_column(String(500))
+    verified: Mapped[bool] = mapped_column(Boolean, default=True)
+    socials: Mapped[list[dict[str, Any]]] = mapped_column(JsonDoc, default=list)
+    theme: Mapped[dict[str, Any]] = mapped_column(JsonDoc, default=dict)
+    ad_settings: Mapped[dict[str, Any]] = mapped_column(JsonDoc, default=dict)
+    published: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class LinkCategory(Base):
+    __tablename__ = "link_categories"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    creator_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("link_creators.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(80))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class LinkItem(Timestamped, Base):
+    __tablename__ = "link_items"
+    __table_args__ = (
+        Index("ix_link_items_creator_active_sort", "creator_id", "active", "sort_order"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    creator_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("link_creators.id", ondelete="CASCADE")
+    )
+    kind: Mapped[str] = mapped_column(String(10), default="link")  # link | pdf | video | course
+    title: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str] = mapped_column(Text, default="")
+    url: Mapped[str] = mapped_column(String(1000))
+    backup_url: Mapped[str | None] = mapped_column(String(1000))
+    thumbnail_url: Mapped[str | None] = mapped_column(String(1000))
+    category_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("link_categories.id", ondelete="SET NULL")
+    )
+    badge: Mapped[str | None] = mapped_column(String(8))  # NEW | FREE | HOT | LIVE
+    featured: Mapped[bool] = mapped_column(Boolean, default=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    open_mode: Mapped[str] = mapped_column(String(10), default="preview")  # preview | download
+
+
+class LinkCampaign(Base):
+    __tablename__ = "link_campaigns"
+    __table_args__ = (UniqueConstraint("creator_id", "slug"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    creator_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("link_creators.id", ondelete="CASCADE")
+    )
+    slug: Mapped[str] = mapped_column(String(60))
+    label: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class LinkEvent(Base):
+    __tablename__ = "link_events"
+    __table_args__ = (
+        Index("ix_link_events_creator_created", "creator_id", "created_at"),
+        Index("ix_link_events_item_created", "item_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    creator_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("link_creators.id", ondelete="CASCADE")
+    )
+    # No foreign key: history stays when a link is deleted.
+    item_id: Mapped[uuid.UUID | None] = mapped_column()
+    type: Mapped[str] = mapped_column(String(10))  # view | click | download
+    visitor: Mapped[str] = mapped_column(String(32))
+    campaign: Mapped[str | None] = mapped_column(String(60))
+    referrer: Mapped[str | None] = mapped_column(String(255))
+    country: Mapped[str | None] = mapped_column(String(2))
+    device: Mapped[str] = mapped_column(String(10))
+    browser: Mapped[str] = mapped_column(String(12))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class LinkDaily(Base):
+    """Daily totals. Page views use item_id = NIL_ITEM; no campaign is stored as ''."""
+
+    __tablename__ = "link_daily"
+
+    creator_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("link_creators.id", ondelete="CASCADE"), primary_key=True
+    )
+    item_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    type: Mapped[str] = mapped_column(String(10), primary_key=True)
+    campaign: Mapped[str] = mapped_column(String(60), primary_key=True)
+    events: Mapped[int] = mapped_column(Integer, default=0)
+    uniques: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class LinkRollupState(Base):
+    __tablename__ = "link_rollup_state"
+
+    creator_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("link_creators.id", ondelete="CASCADE"), primary_key=True
+    )
+    last_day: Mapped[date] = mapped_column(Date)

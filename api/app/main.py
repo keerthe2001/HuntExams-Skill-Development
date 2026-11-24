@@ -9,13 +9,16 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
-from app import routes_admin, routes_auth, routes_learn, routes_projects
+from app import links, routes_admin, routes_auth, routes_learn, routes_links_admin, routes_projects
 from app.config import Settings, get_settings
 from app.content import sync_content
 from app.core import Database, RateLimiter
 
 logger = logging.getLogger("huntexams")
 MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
+# Public, cookie-less writes that browsers send with navigator.sendBeacon (which can't add
+# headers). They change nothing a visitor owns, so they skip the client-header check.
+CSRF_EXEMPT = {"/api/links/event"}
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -28,6 +31,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if root.is_dir():  # noqa: ASYNC240 - one stat call at startup
                 async with app.state.db.sessionmaker() as session:
                     logger.info("content: %s", await sync_content(session, root, overwrite=False))
+        try:
+            async with app.state.db.sessionmaker() as session:
+                await links.owner_creator(session, settings)
+        except Exception:  # the page also creates it on first visit
+            logger.exception("links: could not seed the owner creator")
         yield
         await app.state.db.dispose()
 
@@ -55,7 +63,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def csrf_and_headers(request: Request, call_next):  # type: ignore[no-untyped-def]
         # Cookies are SameSite=Lax; requiring a custom header on writes also blocks
         # cross-site form posts, because browsers can't add it without a CORS preflight.
-        if request.method in MUTATING and request.headers.get("x-hx-client") != "web":
+        if (
+            request.method in MUTATING
+            and request.url.path not in CSRF_EXEMPT
+            and request.headers.get("x-hx-client") != "web"
+        ):
             return JSONResponse(
                 status_code=403,
                 content={"detail": {"code": "csrf", "message": "Missing client header."}},
@@ -64,6 +76,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         path = request.url.path
+        if path.startswith(("/admin", "/api/admin")):
+            response.headers.setdefault("X-Robots-Tag", "noindex, nofollow")
         if path.startswith(("/assets/", "/pyodide/")):
             response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
         else:
@@ -87,6 +101,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.include_router(module.router, prefix="/api")
     app.include_router(routes_auth.me, prefix="/api")
     app.include_router(routes_admin.router, prefix="/api")
+    app.include_router(routes_links_admin.router, prefix="/api")
+    app.include_router(links.api, prefix="/api")
+    # /links, /go/*, /sitemap.xml and /robots.txt are served here, before the web catch-all.
+    app.include_router(links.public)
     if settings.web_dist:
         _serve_web(app, Path(settings.web_dist))
     return app
