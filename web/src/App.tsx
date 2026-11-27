@@ -5,11 +5,14 @@ import { AppLayout, Loading, PublicLayout, RequireAuth } from "@/components/Layo
 import { SessionProvider, useSession } from "@/lib/session";
 import { Dashboard, Diagnostic, Missions, MyCertificate, PracticeHub, Profile, ProjectPage, Roadmap } from "@/pages/AppPages";
 import { AuthPage, ForgotPassword, Onboarding, ResetPassword } from "@/pages/Auth";
-import { Home } from "@/pages/Home";
-import { GuidePage, Guides, LearnCatalogue, Legal, NotFound, PricingPage, Verify } from "@/pages/PublicPages";
+import { GlossaryIndex, GlossaryTerm } from "@/world/GlossaryPages";
+import { WorldShell } from "@/world/Shell";
+import { WorldHome } from "@/world/WorldHome";
+import { WorldLevel } from "@/world/WorldLevel";
+import { GuidePage, Guides, Legal, NotFound, PricingPage, Verify } from "@/pages/PublicPages";
 
 // Lessons, labs and admin pull in the editor and scene engines, so they load on demand.
-const TopicPage = lazy(() => import("@/pages/TopicPage").then((m) => ({ default: m.TopicPage })));
+const TopicWorld = lazy(() => import("@/world/TopicWorld").then((m) => ({ default: m.TopicWorld })));
 const LabPage = lazy(() => import("@/pages/LabPage").then((m) => ({ default: m.LabPage })));
 const admin = () => import("@/pages/Admin");
 const AdminOverview = lazy(() => admin().then((m) => ({ default: m.AdminOverview })));
@@ -36,9 +39,19 @@ export function App() {
       <BrowserRouter>
         <Suspense fallback={<Loading />}>
         <Routes>
+          {/* The learning world: the AI roadmap, worlds, places and the glossary. Tamil and
+              Hindi use the same pages under /ta and /hi (English text until translated). */}
+          {["", "ta", "hi"].map((lang) => (
+            <Route key={lang || "en"} path={lang || undefined} element={<WorldShell />}>
+              <Route index element={<WorldHome />} />
+              <Route path="learn" element={<WorldHome arrival={false} />} />
+              <Route path="world/:slug" element={<WorldLevel />} />
+              <Route path="learn/:slug" element={<TopicWorld />} />
+              <Route path="glossary" element={<GlossaryIndex />} />
+              <Route path="glossary/:term" element={<GlossaryTerm />} />
+            </Route>
+          ))}
           <Route element={<PublicLayout />}>
-            <Route index element={<Home />} />
-            <Route path="learn" element={<LearnCatalogue />} />
             <Route path="pricing" element={<PricingPage />} />
             <Route path="guides" element={<Guides />} />
             <Route path="guides/:slug" element={<GuidePage />} />
@@ -76,7 +89,6 @@ export function App() {
             <Route path="admin/audit" element={<RequireAuth admin><AdminAudit /></RequireAuth>} />
           </Route>
           {/* Focus screens: no site chrome, so nothing competes with the lesson. */}
-          <Route path="learn/:slug" element={<TopicPage />} />
           <Route path="lab/:slug" element={<LabPage />} />
           <Route path="diagnostic/:slug" element={<RequireAuth><Diagnostic /></RequireAuth>} />
           <Route element={<PublicLayout />}><Route path="*" element={<NotFound />} /></Route>

@@ -9,7 +9,15 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
-from app import links, routes_admin, routes_auth, routes_learn, routes_links_admin, routes_projects
+from app import (
+    links,
+    routes_admin,
+    routes_auth,
+    routes_learn,
+    routes_links_admin,
+    routes_projects,
+    seo,
+)
 from app.config import Settings, get_settings
 from app.content import sync_content
 from app.core import Database, RateLimiter
@@ -103,6 +111,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(routes_admin.router, prefix="/api")
     app.include_router(routes_links_admin.router, prefix="/api")
     app.include_router(links.api, prefix="/api")
+    app.include_router(seo.api, prefix="/api")
     # /links, /go/*, /sitemap.xml and /robots.txt are served here, before the web catch-all.
     app.include_router(links.public)
     if settings.web_dist:
@@ -146,6 +155,8 @@ def _serve_web(app: FastAPI, dist: Path) -> None:
     if not index.is_file():
         logger.warning("HX_WEB_DIST=%s has no index.html; website not served", dist)
         return
+    # Server-rendered pages for the learning world (full text for search engines).
+    seo.register(app, index.read_text(encoding="utf-8"))
 
     @app.get("/{path:path}", include_in_schema=False)
     async def spa(path: str) -> FileResponse:

@@ -4,54 +4,9 @@ import { Link, useParams } from "react-router";
 import { AdSlot, ErrorBox, Loading } from "@/components/Layout";
 import { api, ApiError } from "@/lib/api";
 import { useApi } from "@/lib/session";
-import type { Certificate, Curriculum } from "@/lib/types";
-import { ENGINE_META, LEVEL_COLOR, useTitle } from "@/lib/util";
+import type { Certificate } from "@/lib/types";
+import { useTitle } from "@/lib/util";
 
-import { Pricing } from "./Home";
-
-export function LearnCatalogue() {
-  useTitle("All topics");
-  const { data, error, loading, reload } = useApi<Curriculum>("/curriculum");
-  const [lv, setLv] = useState<number | null>(null);
-  if (loading) return <Loading />;
-  if (error || !data) return <ErrorBox error={error} retry={reload} />;
-  const shown = data.levels.filter((l) => lv === null || l.number === lv);
-  return (
-    <div className="wrap page">
-      <div className="page-head"><div><span className="label">See it move</span><h1>Every topic, with its motion scene</h1>
-        <p className="muted" style={{ marginTop: 8, maxWidth: "62ch" }}>Open any topic to watch its scene for free. Log in to save progress, answer questions for XP, and unlock missions.</p></div></div>
-      <div className="row" role="group" aria-label="Filter by level" style={{ marginBottom: 20 }}>
-        <button type="button" className={`btn btn-sm ${lv === null ? "btn-primary" : "btn-ghost"}`} onClick={() => setLv(null)}>All</button>
-        {data.levels.map((l) => (
-          <button key={l.slug} type="button" className={`btn btn-sm ${lv === l.number ? "btn-primary" : "btn-ghost"}`} onClick={() => setLv(l.number)}>
-            <span className="dot" style={{ ["--c" as string]: LEVEL_COLOR(l.number) }} />{l.number === 0 ? "Starter" : `L${l.number}`}
-          </button>
-        ))}
-      </div>
-      {shown.map((l) => (
-        <section key={l.slug} style={{ marginBottom: 32 }}>
-          <h2 style={{ fontSize: 22, display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>
-            <span className="dot" style={{ ["--c" as string]: LEVEL_COLOR(l.number), width: 12, height: 12 }} />
-            {l.number === 0 ? "Starter" : `Level ${l.number}`} · {l.title}</h2>
-          <p className="muted small" style={{ marginBottom: 8 }}>{l.summary}</p>
-          <ul className="topics">
-            {l.topics.map((t) => (
-              <li key={t.slug}><Link to={`/learn/${t.slug}`}>
-                <span className="mono tiny faint">{String(t.number).padStart(2, "0")}</span>
-                <span><b>{t.title}</b><span className="muted small" style={{ display: "block" }}>{t.summary}</span></span>
-                <span className="kinds">
-                  {t.engine && <span className="eng" style={{ ["--c" as string]: ENGINE_META[t.engine]?.color }}>{ENGINE_META[t.engine]?.name}</span>}
-                  {t.has_code && <span className="kind">code</span>}
-                  {t.lab && <span className="kind y">lab</span>}
-                </span>
-              </Link></li>
-            ))}
-          </ul>
-        </section>
-      ))}
-    </div>
-  );
-}
 
 export function PricingPage() {
   useTitle("Pricing");
@@ -201,6 +156,25 @@ export function NotFound() {
       <span className="label">404</span><h1 style={{ fontSize: 36 }}>This page doesn't exist</h1>
       <p className="muted">The link may be old, or the page moved.</p>
       <Link className="btn btn-primary" to="/">Go home</Link>
+    </div>
+  );
+}
+
+export function Pricing({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className="stack">
+      <div className="price-grid">
+        <div className="card price"><span className="label">Free</span><div className="amt">₹0</div>
+          <ul><li>Every motion scene and lesson</li><li>Guided labs and the Python sandbox</li><li>Practice questions and XP</li><li>Mission reviews and your certificate</li></ul>
+          <Link className="btn btn-ghost" to="/signup">Start free</Link></div>
+        <div className="card price pro"><span className="label" style={{ color: "var(--brand)" }}>Pro monthly</span><div className="amt">₹299<small> / month</small></div>
+          <ul><li>Everything in Free</li><li>No ads anywhere</li><li>Support the people building the scenes</li></ul>
+          <button className="btn btn-primary" type="button" disabled>Coming soon</button></div>
+        <div className="card price"><span className="label">Pro yearly</span><div className="amt">₹1,999<small> / year</small></div>
+          <ul><li>Everything in Pro</li><li>About 44% less than monthly</li></ul>
+          <button className="btn btn-ghost" type="button" disabled>Coming soon</button></div>
+      </div>
+      {!compact && <p className="note">Pro isn't on sale yet and these prices may change before launch. Everything you need to learn and earn the certificate is free today.</p>}
     </div>
   );
 }

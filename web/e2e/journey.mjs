@@ -34,7 +34,7 @@ async function signup(page, name, email) {
   await page.goto(`${BASE}/signup`);
   await page.fill("#name", name); await page.fill("#email", email); await page.fill("#password", PW);
   await page.click("button[type=submit]");
-  await page.waitForURL(/onboarding|dashboard|roadmap/);
+  await page.waitForURL(/onboarding|dashboard|roadmap|learn/);
 }
 
 /* ------------------------------------------------------------ admin + answer key */
@@ -44,7 +44,7 @@ const admin = await adminCtx.newPage(); watch(admin, "admin");
 await admin.goto(`${BASE}/login`);
 await admin.fill("#email", ADMIN); await admin.fill("#password", PW); await admin.click("button[type=submit]");
 await admin.waitForTimeout(800);
-if (!/onboarding|dashboard/.test(admin.url())) await signup(admin, "Admin", ADMIN);
+if (!/onboarding|dashboard|learn/.test(admin.url())) await signup(admin, "Admin", ADMIN);
 const me = await api(admin, "/me");
 ok(me.body?.role === "admin", "admin role granted from HX_ADMIN_EMAILS");
 const topicsList = (await api(admin, "/admin/content?kind=topic")).body;
@@ -54,7 +54,7 @@ ok(Object.keys(key).length >= 100, `admin can read ${Object.keys(key).length} to
 
 /* ------------------------------------------------------------ public pages, desktop + phone */
 step("Public pages render without errors or sideways scrolling");
-const publicRoutes = ["/", "/learn", "/roadmap", "/pricing", "/guides", "/guides/rag-explained-for-beginners", "/verify", "/login", "/signup",
+const publicRoutes = ["/", "/learn", "/glossary", "/glossary/token", "/world/llm-foundations", "/ta/learn/what-is-a-program", "/learn/what-is-a-program?step=build", "/learn/context-windows?step=experiment", "/roadmap", "/pricing", "/guides", "/guides/rag-explained-for-beginners", "/verify", "/login", "/signup",
   "/about", "/privacy", "/terms", "/learn/what-is-a-program", "/learn/rag-architecture", "/learn/conditional-routing", "/learn/caching-scalability",
   "/learn/similarity-search", "/learn/chunk-size-overlap", "/learn/inference-parameters", "/learn/capstone-api", "/lab/lab-chunking", "/nope-404"];
 for (const [label, ctxOpts] of [["desktop", { viewport: { width: 1360, height: 900 } }], ["phone", devices["iPhone 13"]]]) {
@@ -81,19 +81,37 @@ await page.click("text=Beginner"); await page.click("text=Continue");
 await page.click("text=1 hour a day"); await page.click("text=Continue");
 await page.waitForSelector("text=Here's your route");
 ok(await page.waitForSelector("text=Starter · Python in plain words", { timeout: 10000 }).then(() => true, () => false), "beginners start with the starter pack");
-await page.click("text=Open my roadmap"); await page.waitForURL("**/roadmap");
-ok(await page.waitForSelector(".rmap >> text=Python in plain words", { timeout: 10000 }).then(() => true, () => false), "roadmap shows the starter level");
+await page.click("text=Enter the AI world"); await page.waitForURL("**/learn");
+ok(await page.waitForSelector(".w-world >> text=Python in plain words", { timeout: 10000 }).then(() => true, () => false), "the AI world shows the starter world");
 await shot(page, "roadmap");
 
 step("Lesson: scene to the end marks it watched; every question type through the UI");
+// In the world, a topic's questions live in its Experiment step (one interactive question)
+// and its Practice step (the rest).
+async function cardFor(slug, qid) {
+  for (const st of ["experiment", "practice"]) {
+    await page.goto(`${BASE}/learn/${slug}?step=${st}`);
+    await page.waitForSelector(".w-steps");
+    await page.waitForTimeout(400);
+    const card = page.locator(`.q[data-qid="${qid}"]`);
+    if (await card.count()) return card;
+  }
+  throw new Error(`question ${qid} not found in ${slug}`);
+}
 async function answerAll(slug) {
   await page.goto(`${BASE}/learn/${slug}`);
   await page.waitForSelector(".scene");
-  // Step through the scene to its last step (marks it watched).
-  for (let k = 0; k < 15; k++) { const n = page.locator(".scene-ctl >> text=Next ›").first(); if (await n.isDisabled()) break; await n.click(); }
+  // Walk every scene to its last step, then finish the place (marks it watched).
+  for (let s = 0; s < 6; s++) {
+    for (let k = 0; k < 15; k++) { const n = page.locator(".scene-ctl >> text=Next ›").first(); if (await n.isDisabled()) break; await n.click(); }
+    const more = page.locator(".w-bar >> text=Next scene");
+    if (!(await more.count())) break;
+    await more.click();
+  }
+  await page.goto(`${BASE}/learn/${slug}?step=done`); await page.waitForSelector(".w-done");
   await page.waitForTimeout(600);
   for (const q of key[slug].checks) {
-    const card = page.locator(`.q[data-qid="${q.id}"]`);
+    const card = await cardFor(slug, q.id);
     if (q.type === "predict" || q.type === "mcq") await card.locator(".opt").nth(q.answer).click();
     if (q.type === "multi") for (const a of q.answer) await card.locator(".opt").nth(a).click();
     if (q.type === "fill") await card.locator("select").selectOption(q.answer);
@@ -113,27 +131,27 @@ async function answerAll(slug) {
   }
 }
 await answerAll("what-is-a-program");
-await page.waitForSelector("text=Topic practised");
-ok(true, "topic marked practised after scene + all checks");
+const practised = await (await page.request.get(`${BASE}/api/topics/what-is-a-program`)).json();
+ok(practised.progress?.status === "practised", "topic marked practised after scene + all checks");
 await shot(page, "lesson-practised");
 
 step("Wrong answer shows a hint, not XP");
-await page.goto(`${BASE}/learn/variables`); await page.waitForSelector(".q");
-const q0 = key["variables"].checks[0];
-const wrongCard = page.locator(`.q[data-qid="${q0.id}"]`);
+const q0 = key["variables"].checks.find((q) => q.type === "mcq" || q.type === "predict");
+const wrongCard = await cardFor("variables", q0.id);
 await wrongCard.locator(".opt").nth((q0.answer + 1) % q0.options.length).click();
 await wrongCard.locator("button", { hasText: "Check" }).click();
 await wrongCard.locator(".fb").waitFor();
 ok(/Not yet/.test(await wrongCard.locator(".fb").textContent() ?? ""), "wrong answer gets 'Not yet' feedback");
 
 step("Run the worked example in the Python sandbox and watch each line");
+await page.goto(`${BASE}/learn/variables?step=build`); await page.waitForSelector(".codebox");
 await page.click("text=▶ Run and watch each line");
 await page.waitForSelector(".viz .says", { timeout: 90000 });
 ok(/Creates price = 120|price/.test(await page.locator(".viz .says").textContent() ?? ""), "visualizer narrates the executed line");
 
 step("Code exercise: fail, reveal solution, pass");
 const exCheck = page.locator("button", { hasText: "Check my code" });
-await exCheck.click(); await page.waitForSelector(".t-code .alert");
+await exCheck.click(); await page.waitForSelector(".w-build-ex .alert");
 await exCheck.click(); await page.waitForTimeout(1500);
 await page.click("text=Show a solution"); await page.click("text=Use it");
 await exCheck.click();
@@ -220,12 +238,17 @@ await admin.click('button:has-text("Publish")');
 ok(await admin.waitForSelector("text=valid JSON", { timeout: 5000 }).then(() => true, () => false), "invalid JSON is caught before saving");
 await admin.click("text=Preview scene");
 
-step("Phone: lesson tabs and lab tabs");
+step("Phone: world steps, tap-to-build and lab tabs");
 const phone = await browser.newContext(devices["iPhone 13"]);
 const pp = await phone.newPage(); watch(pp, "phone");
-await pp.goto(`${BASE}/learn/rag-architecture`); await pp.waitForSelector(".ltabs");
-await pp.click(".ltabs >> text=Code"); ok(await pp.isVisible("text=Run and watch each line"), "phone: Code tab shows the runnable example");
-await pp.click(".ltabs >> text=Practise"); ok(await pp.isVisible(".q"), "phone: Practise tab shows questions");
+await pp.goto(`${BASE}/learn/rag-architecture?step=build`); await pp.waitForSelector(".w-steps");
+ok(await pp.isVisible("text=Run and watch each line"), "phone: Build step shows the runnable example");
+await pp.goto(`${BASE}/learn/rag-architecture?step=practice`); await pp.waitForSelector(".q");
+ok(await pp.isVisible(".q"), "phone: Practice step shows questions");
+await pp.goto(`${BASE}/learn/what-is-a-program?step=build`); await pp.waitForSelector(".w-blocks");
+for (let h = 0; h < 20 && await pp.locator(".w-pool .w-line").count(); h++) await pp.click("text=Hint");
+await pp.click("text=▶ Run my program");
+ok(await pp.waitForSelector("text=✓ It works", { timeout: 90000 }).then(() => true, () => false), "phone: tap-to-build program runs and passes");
 await pp.goto(`${BASE}/lab/lab-chunking`); await pp.waitForSelector(".lab-tabs");
 await pp.click(".lab-tabs >> text=Code"); ok(await pp.isVisible(".cm-editor"), "phone: lab Code tab shows the editor");
 await shot(pp, "phone-lab");

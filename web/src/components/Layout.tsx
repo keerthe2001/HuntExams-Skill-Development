@@ -41,7 +41,7 @@ export function Footer() {
           <Link to="/" className="brand"><span className="mark" aria-hidden="true" />HuntExams</Link>
           <p>Learn AI engineering by seeing it move, then building it.</p>
         </div>
-        <div><h4>Learn</h4><Link to="/roadmap">Roadmap</Link><Link to="/learn">All topics</Link><Link to="/guides">Guides</Link></div>
+        <div><h4>Learn</h4><Link to="/learn">AI world</Link><Link to="/glossary">Glossary</Link><Link to="/guides">Guides</Link></div>
         <div><h4>Product</h4><Link to="/pricing">Pricing</Link><Link to="/verify">Verify a certificate</Link></div>
         <div><h4>Company</h4><Link to="/about">About</Link><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link></div>
       </div>
@@ -54,7 +54,7 @@ export function PublicLayout() {
   const [open, setOpen] = useState(false);
   const loc = useLocation();
   useEffect(() => setOpen(false), [loc.pathname]);
-  const links = [["/roadmap", "Roadmap"], ["/learn", "See it move"], ["/pricing", "Pricing"], ["/guides", "Guides"]] as const;
+  const links = [["/learn", "AI world"], ["/glossary", "Glossary"], ["/pricing", "Pricing"], ["/guides", "Guides"]] as const;
   return (
     <>
       <a href="#main" className="skip">Skip to content</a>
@@ -107,7 +107,7 @@ export function AppLayout() {
   const loc = useLocation();
   // Admin screens don't need learner onboarding.
   const isAdmin = loc.pathname.startsWith("/admin");
-  const items = [["/dashboard", "home", "Home"], ["/roadmap", "map", "Roadmap"], ["/practice", "check", "Practice"],
+  const items = [["/dashboard", "home", "Home"], ["/learn", "map", "AI world"], ["/practice", "check", "Practice"],
     ["/missions", "folder", "Missions"], ["/profile", "user", "Profile"]] as const;
   return (
     <RequireAuth onboarded={!isAdmin}>

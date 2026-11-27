@@ -22,6 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import seo
 from app.config import Settings
 from app.core import api_error, not_found
 from app.deps import DbDep, SettingsDep
@@ -423,13 +424,13 @@ async def links_json(handle: str, db: DbDep, settings: SettingsDep) -> dict:
 
 # ---------------------------------------------------------------- SEO files
 
-STATIC_PAGES = ["/", "/learn", "/guides", "/pricing", "/links", "/about", "/privacy", "/terms"]
+STATIC_PAGES = ["/", "/guides", "/pricing", "/links", "/about", "/privacy", "/terms"]
 
 
 @public.get("/sitemap.xml")
 async def sitemap(db: DbDep, settings: SettingsDep) -> Response:
     base = settings.public_site_url.rstrip("/")
-    paths = list(STATIC_PAGES)
+    paths = list(STATIC_PAGES) + seo.sitemap_paths(await seo.cached_world(db))
     owner = settings.links_owner_handle.lower()
     for handle in await db.scalars(
         select(LinkCreator.handle).where(LinkCreator.published.is_(True))

@@ -11,6 +11,27 @@ and guided labs, and proven with reviewed missions and a verifiable certificate.
 | Curriculum | [`api/content`](api/content) | YAML, validated, loaded into Postgres, editable in the admin |
 
 
+## The learning world
+
+The site opens straight into a visual world, not a website. `/` is a short arrival ("Step
+inside"), then the AI roadmap as a universe: each level is a world (planet) and each topic a place
+(station) on a glowing path. A place is full screen, one step at a time:
+**See** (the motion scene) → **Experiment** (switch parts off, or a predict/tune question) →
+**Build** (run the worked example line by line; on phones, tap-to-build blocks) → **Guided lab**
+→ **Practice** (optional). Steps without content for a topic are skipped.
+
+* **Read panel:** simple words first, technical on tap, words to know. Hard words anywhere are
+  underlined; tap for a one-line meaning (`/api/glossary`, built from every topic's `words`).
+* **Search engines:** `/`, `/learn`, `/world/<level>`, `/learn/<topic>`, `/glossary` and
+  `/glossary/<term>` are server-rendered by the API (`api/app/seo.py`) with the full text,
+  canonical, hreflang, Open Graph and JSON-LD, and are in `/sitemap.xml`. The app replaces that
+  HTML on load and shows the same text in the Read panel.
+* **Guests first:** no sign-up needed to learn. Progress is kept in the browser and copied to the
+  account after sign-up.
+* **Tamil and Hindi:** `/ta/...` and `/hi/...` already route. They show English (noindex,
+  canonical to English) until translations are added; then add the language to
+  `PUBLISHED_LANGS` (`api/app/seo.py`) and `PUBLISHED` (`web/src/world/lang.tsx`).
+
 ## What's in Release 1
 
 * **Curriculum:** 8 levels (97 topics from the brief) plus a 6-topic Python starter pack for

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Scene, SceneStep } from "@/lib/types";
 
@@ -26,9 +26,13 @@ type Props = {
   onFinished?: () => void;
   jump?: { at: number; key: number } | null;
   tag?: string;
+  /** Hide the "switch something off" controls (the world shows them in its Experiment step). */
+  hideSwitches?: boolean;
+  switchesLabel?: string;
+  renderText?: (text: string) => ReactNode;
 };
 
-export function ScenePlayer({ scene, autoplay = true, pace = 3800, onStep, onFinished, jump, tag }: Props) {
+export function ScenePlayer({ scene, autoplay = true, pace = 3800, onStep, onFinished, jump, tag, hideSwitches, switchesLabel, renderText }: Props) {
   const [sw, setSw] = useState<Record<string, boolean>>(() =>
     Object.fromEntries((scene.switches ?? []).map((s) => [s.id, true])));
   const steps = useMemo(() => visibleSteps(scene, sw), [scene, sw]);
@@ -126,7 +130,7 @@ export function ScenePlayer({ scene, autoplay = true, pace = 3800, onStep, onFin
         <span className={`k ${tone === "bad" ? "badk" : tone === "good" ? "goodk" : ""}`}>
           Step {idx + 1} of {steps.length} · {scene.track[step.at]}
         </span>
-        <p>{step.caption}</p>
+        <p>{renderText ? renderText(step.caption) : step.caption}</p>
       </div>
       <div className="scene-ctl">
         <button className="btn btn-ghost btn-sm" type="button" onClick={() => go(idx - 1)} disabled={idx === 0}>‹ Back</button>
@@ -137,9 +141,9 @@ export function ScenePlayer({ scene, autoplay = true, pace = 3800, onStep, onFin
         <span className="sp" />
         <button className="btn btn-text btn-sm" type="button" onClick={() => { setI(0); setPlaying(true); }}>↺ Replay</button>
       </div>
-      {(scene.switches ?? []).length > 0 && (
+      {!hideSwitches && (scene.switches ?? []).length > 0 && (
         <div className="switches">
-          <span className="label">Try it: switch something off</span>
+          <span className="label">{switchesLabel ?? "Try it: switch something off"}</span>
           {scene.switches!.map((s) => (
             <label key={s.id} className="switch">
               <input type="checkbox" checked={sw[s.id] ?? true} onChange={(e) => toggleSwitch(s.id, e.target.checked, s.track)} />
