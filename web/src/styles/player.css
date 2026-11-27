@@ -123,15 +123,30 @@ html.in-player, html.in-player body { height: 100%; overflow: hidden; }
 .p-btn.primary:hover { background: color-mix(in srgb, var(--brand) 88%, var(--fg)); }
 
 .p-read-btn { display: none; }
-.p-text { flex: 0 1 auto; max-height: 24%; min-height: 96px; overflow-y: auto; overscroll-behavior: contain; border-radius: var(--r-lg); background: var(--card); border: 1px solid var(--line); padding: 12px 18px 14px; display: flex; flex-direction: column; gap: 8px; }
-.p-text-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; position: sticky; top: -12px; padding-top: 2px; background: var(--card); z-index: 1; }
+.p-text { flex: none; overflow: hidden; border-radius: var(--r-lg); background: var(--card); border: 1px solid var(--line); padding: 10px 16px 10px; display: flex; flex-direction: column; gap: 6px; }
+/* Explanation cards: one visible at a time, sliding; the stack is as tall as its tallest card. */
+.p-cardset { display: grid; gap: 6px; touch-action: pan-y; }
+.p-cards { display: grid; }
+.p-tcard { grid-area: 1 / 1; display: grid; gap: 4px; align-content: start; visibility: hidden; opacity: 0; font-size: 16px; line-height: 1.6; color: var(--fg-2); }
+.p-tcard.on { visibility: visible; opacity: 1; animation: p-card-fwd .35s cubic-bezier(.2, .8, .2, 1) both; }
+.p-tcard.on[data-dir="back"] { animation-name: p-card-back; }
+@keyframes p-card-fwd { from { opacity: 0; transform: translateX(36px); } }
+@keyframes p-card-back { from { opacity: 0; transform: translateX(-36px); } }
+.p-tcard-title { color: var(--fg); font-size: 15px; }
+.p-tcard-body p { margin: 0; }
+.p-tcard-body .lead { color: var(--fg); }
+.p-cardnav { display: flex; align-items: center; gap: 10px; }
+.p-cardnav > button { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line-2); background: transparent; color: var(--fg); font-size: 20px; line-height: 1; cursor: pointer; }
+.p-cardnav > button:disabled { opacity: .35; cursor: default; }
+.p-carddots { display: flex; gap: 6px; flex: 1; }
+.p-carddots button { width: 8px; height: 8px; padding: 0; border-radius: 99px; border: 0; background: var(--line-2); cursor: pointer; transition: width .25s, background .25s; }
+.p-carddots button[aria-current="true"] { width: 22px; background: var(--brand); }
+.p-cardcount { font-family: var(--font-mono); font-size: 12px; color: var(--faint); }
+.p-text-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .p-toggle { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--card-2); }
 .p-toggle button { min-height: 36px; padding: 0 14px; border-radius: 999px; border: 0; background: transparent; color: var(--fg-2); font-weight: 600; font-size: 14px; cursor: pointer; }
 .p-toggle button[aria-pressed="true"] { background: var(--brand); color: var(--brand-on); }
 .p-hint { font-size: 13px; color: var(--faint); }
-.p-read { display: grid; gap: 8px; font-size: 16px; line-height: 1.65; color: var(--fg-2); }
-.p-read .lead { color: var(--fg); }
-.p-read b { color: var(--fg); }
 .p-chips { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
 .p-chip { font-size: 13px; padding: 6px 12px; border-radius: 999px; background: var(--card-2); color: var(--fg-2); text-decoration: none; }
 .p-chip:hover { color: var(--fg); }
@@ -217,13 +232,12 @@ html.in-player, html.in-player body { height: 100%; overflow: hidden; }
   .p-step.cur { padding-right: 12px; }
   .p-step.cur span { display: inline; }
   .p-steps li:not(:last-child)::after { width: 8px; }
-  .p-text { max-height: none; min-height: 0; padding: 8px 10px; flex: none; }
-  .p-text .p-read { display: none; }
-  .p-text.open { max-height: 55%; flex: 0 1 auto; }
-  .p-text.open .p-read { display: grid; }
+  .p-text { padding: 8px 10px; }
+  .p-text .p-cardset { display: none; }
+  .p-text.open .p-cardset { display: grid; }
+  .p-tcard { font-size: 15px; }
   .p-read-btn { display: inline-flex; align-items: center; min-height: 36px; padding: 0 12px; margin-left: auto; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--fg); font-weight: 600; font-size: 14px; cursor: pointer; }
   .p-toggle button { min-height: 34px; padding: 0 11px; font-size: 13px; }
-  .p-read { font-size: 15px; }
   .p-ctl { order: 10; margin: 0 -12px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--bg-2); }
   .p-ctl .p-btn.primary { flex: 1; }
   .p-ctl .p-grow { display: none; }
@@ -233,7 +247,7 @@ html.in-player, html.in-player body { height: 100%; overflow: hidden; }
   .p-logo span:last-child { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .p-stage .p-panel, .p-welcome, .p-check { animation: none !important; }
+  .p-stage .p-panel, .p-welcome, .p-check, .p-tcard.on { animation: none !important; }
   ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
   .p-side { transition: none; }
 }

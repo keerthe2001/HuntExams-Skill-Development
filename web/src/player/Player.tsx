@@ -74,6 +74,63 @@ function FitBox({ design, enabled, children }: { design: number; enabled: boolea
   );
 }
 
+type TextCard = { key: string; title: string; body: ReactNode; step?: number };
+
+/** The explanation as cards that slide (arrows, dots, swipe, arrow keys), never scroll.
+ *  All cards share one grid cell, so the panel is as tall as the tallest card. While the
+ *  visual plays, the card for its current step slides in, unless the learner just swiped. */
+function TextCards({ cards, follow }: { cards: TextCard[]; follow: number | null }) {
+  const [i, setI] = useState(0);
+  const [dir, setDir] = useState<"fwd" | "back">("fwd");
+  const manualUntil = useRef(0);
+  const startX = useRef<number | null>(null);
+  const n = cards.length;
+  const show = useCallback((k: number, manual: boolean) => {
+    if (k < 0 || k >= n) return;
+    if (manual) manualUntil.current = Date.now() + 12000;
+    setI((cur) => { setDir(k < cur ? "back" : "fwd"); return k; });
+  }, [n]);
+  useEffect(() => {
+    if (follow === null || Date.now() < manualUntil.current) return;
+    const k = cards.findIndex((c) => c.step === follow);
+    if (k >= 0) show(k, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [follow]);
+  return (
+    <div className="p-cardset"
+      onKeyDown={(e) => {
+        if (e.key === "ArrowRight") { e.stopPropagation(); show(i + 1, true); }
+        if (e.key === "ArrowLeft") { e.stopPropagation(); show(i - 1, true); }
+      }}
+      onPointerDown={(e) => { startX.current = e.clientX; }}
+      onPointerUp={(e) => {
+        if (startX.current === null) return;
+        const dx = e.clientX - startX.current;
+        startX.current = null;
+        if (Math.abs(dx) > 40) show(i + (dx < 0 ? 1 : -1), true);
+      }}>
+      <div className="p-cards" aria-live="polite">
+        {cards.map((c, k) => (
+          <div key={c.key} className={`p-tcard ${k === i ? "on" : ""}`} data-dir={dir} aria-hidden={k !== i} role="group" aria-label={`${k + 1} of ${n}: ${c.title}`}>
+            <b className="p-tcard-title">{c.title}</b>
+            <div className="p-tcard-body">{c.body}</div>
+          </div>
+        ))}
+      </div>
+      {n > 1 && (
+        <div className="p-cardnav">
+          <button type="button" aria-label="Previous card" onClick={() => show(i - 1, true)} disabled={i === 0}>‹</button>
+          <div className="p-carddots">
+            {cards.map((c, k) => <button key={c.key} type="button" aria-label={`Card ${k + 1}: ${c.title}`} aria-current={k === i} onClick={() => show(k, true)} />)}
+          </div>
+          <span className="p-cardcount">{i + 1} / {n}</span>
+          <button type="button" aria-label="Next card" onClick={() => show(i + 1, true)} disabled={i === n - 1}>›</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- top bar
 
 function ThemeButton() {
@@ -227,6 +284,7 @@ export function Player({ home = false }: { home?: boolean }) {
   const [welcomed, setWelcomed] = useState(() => readFlag(WELCOME_KEY));
   const [dir, setDir] = useState<"fwd" | "back">("fwd");
   const [readOpen, setReadOpen] = useState(false);
+  const [sceneAt, setSceneAt] = useState<number | null>(null);
   const phone = useMedia("(max-width: 700px)");
   const sentWatched = useRef(false);
   useTitle(home ? "Learn agentic AI with visuals" : (t?.title ?? "Learn"));
@@ -236,7 +294,7 @@ export function Player({ home = false }: { home?: boolean }) {
     document.documentElement.classList.add("in-player");
     return () => document.documentElement.classList.remove("in-player");
   }, []);
-  useEffect(() => { setSceneIdx(0); setCaption(""); sentWatched.current = false; setDrawer(false); }, [slug]);
+  useEffect(() => { setSceneIdx(0); setCaption(""); setSceneAt(null); sentWatched.current = false; setDrawer(false); }, [slug]);
   useEffect(() => { if (user) setMode(user.profile.explain_mode); }, [user]);
   useEffect(() => { whenIdle(() => { void loadBuild(); }); }, []);
   useEffect(() => { if (t?.next) { const n = t.next; whenIdle(() => prefetchTopic(n)); } }, [t?.next]);
@@ -282,7 +340,7 @@ export function Player({ home = false }: { home?: boolean }) {
     if (!plan) return;
     const key = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
-      if (el.closest("input, textarea, select, .cm-editor, [contenteditable]")) return;
+      if (el.closest("input, textarea, select, .cm-editor, [contenteditable], .p-cardset")) return;
       const order: StepKey[] = [...plan.steps, "done"];
       if (e.key === "ArrowRight" && at < order.length - 1) go(order[at + 1]!);
       if (e.key === "ArrowLeft" && at > 0) go(order[at - 1]!);
@@ -347,7 +405,7 @@ export function Player({ home = false }: { home?: boolean }) {
   const scene = b.scenes[sceneIdx];
   const lastScene = sceneIdx >= b.scenes.length - 1;
   const words = (s: string) => <Words text={s} />;
-  const onStep = (s: SceneStep) => setCaption(s.caption);
+  const onStep = (s: SceneStep) => { setCaption(s.caption); if (step === "see" && sceneIdx === 0) setSceneAt(s.at); };
   const liveWord = (w: string) => Boolean(caption) && caption.toLowerCase().includes(w.toLowerCase());
   const techPoints = b.points.filter((p) => p.eng);
   const nextLabel = nextStep === "done" ? "Finish topic" : nextStep ? `Next: ${LABEL[nextStep]}` : "";
@@ -459,24 +517,16 @@ export function Player({ home = false }: { home?: boolean }) {
           <span className="p-hint">Tap an underlined word for its meaning</span>
           <button type="button" className="p-read-btn" aria-expanded={readOpen} onClick={() => setReadOpen((o) => !o)}>{readOpen ? "Hide ▾" : "Read ▴"}</button>
         </div>
-        <article className="p-read">
-          {mode === "simple" ? (
-            <>
-              <p className="lead"><Words text={b.intro} /></p>
-              {b.points.map((p, k) => <p key={k}><b>{p.title}.</b> <Words text={p.text} /></p>)}
-            </>
-          ) : (
-            <>
-              {b.intro_eng ? <p className="lead"><Words text={b.intro_eng} /></p> : <p className="lead">This topic is mostly about the idea, so the simple explanation is the full story.</p>}
-              {techPoints.map((p, k) => <p key={k}><b>{p.title}.</b> <Words text={p.eng!} /></p>)}
-            </>
-          )}
-          {b.words && b.words.length > 0 && (
-            <div className="p-chips">
-              {b.words.map(([w]) => <Link key={w} to={to(`/glossary/${term_slug(w)}`)} className="p-chip">{w}</Link>)}
-            </div>
-          )}
-        </article>
+        <TextCards key={`${t.slug}-${mode}`} follow={step === "see" && sceneIdx === 0 ? sceneAt : null} cards={[
+          ...(mode === "simple"
+            ? [{ key: "intro", title: "In short", body: <p className="lead"><Words text={b.intro} /></p> },
+              ...b.points.map((p, k) => ({ key: `p${k}`, title: p.title, step: p.step, body: <p><Words text={p.text} /></p> }))]
+            : [{ key: "intro", title: "How it works", body: <p className="lead"><Words text={b.intro_eng ?? "This topic is mostly about the idea, so the simple explanation is the full story."} /></p> },
+              ...techPoints.map((p, k) => ({ key: `e${k}`, title: p.title, step: p.step, body: <p><Words text={p.eng!} /></p> }))]),
+          ...(b.words && b.words.length ? [{ key: "words", title: "Words to know", body: (
+            <div className="p-chips">{b.words.map(([w]) => <Link key={w} to={to(`/glossary/${term_slug(w)}`)} className="p-chip">{w}</Link>)}</div>
+          ) }] : []),
+        ]} />
       </section>
     </main>
   );
