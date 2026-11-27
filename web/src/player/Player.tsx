@@ -2,7 +2,7 @@
 // One screen that never scrolls (only its panels do): topics on the left, the visual stage in
 // the middle with its steps (See → Try → Build → Quiz), the explanation underneath, and a
 // lesson companion on the right. Tablets fold the side columns away; phones stack it all.
-import { lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, type ReactNode, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 
 import { Icon } from "@/components/Icon";
@@ -77,6 +77,27 @@ type TextCard = { key: string; title: string; body: ReactNode; step?: number };
 /** The explanation as cards that slide (arrows, dots, swipe, arrow keys), never scroll.
  *  All cards share one grid cell, so the panel is as tall as the tallest card. While the
  *  visual plays, the card for its current step slides in, unless the learner just swiped. */
+/** Notes beside the visual: the text takes the largest size (22px down to 14px) until every card fits the column. */
+function SideNotes({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const fit = () => {
+      let f = 22;
+      el.style.setProperty("--nfs", `${f}px`);
+      // Phones: the column has no fixed height, so keep the normal size.
+      if (getComputedStyle(el).overflow === "visible") { el.style.setProperty("--nfs", "17px"); return; }
+      while (f > 14 && el.scrollHeight > el.clientHeight + 1) { f -= 1; el.style.setProperty("--nfs", `${f}px`); }
+    };
+    fit();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(fit) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  });
+  return <div ref={ref} className="p-sidenotes">{children}</div>;
+}
+
 function TextCards({ cards, follow, head }: { cards: TextCard[]; follow: number | null; head?: ReactNode }) {
   const [i, setI] = useState(0);
   const [dir, setDir] = useState<"fwd" | "back">("fwd");
@@ -424,11 +445,36 @@ export function Player({ home = false }: { home?: boolean }) {
   const techPoints = b.points.filter((p) => p.eng);
   const nextLabel = nextStep === "done" ? "Finish topic" : nextStep ? `Next: ${LABEL[nextStep]}` : "";
 
+  // The Simple English / Technical notes. On See and Try they sit in the column beside the visual;
+  // on Build and Quiz (no column) "Read notes" opens them as a panel.
+  const notes = (closable: boolean) => (
+    <TextCards key={`${t.slug}-${mode}`} follow={step === "see" && sceneIdx === 0 ? sceneAt : null}
+      head={<>
+        <div className="p-toggle" role="group" aria-label="Explanation style">
+          <button type="button" aria-pressed={mode === "simple"} onClick={() => setMode("simple")}>Simple English</button>
+          <button type="button" aria-pressed={mode === "eng"} onClick={() => setMode("eng")}>Technical</button>
+        </div>
+        {closable && <button type="button" className="p-read-close" onClick={() => setReadOpen(false)} aria-label="Close the notes">✕</button>}
+      </>}
+      cards={[
+      ...(mode === "simple"
+        ? [{ key: "intro", title: "In short", body: <p className="lead"><Words text={b.intro} /></p> },
+          ...b.points.map((p, k) => ({ key: `p${k}`, title: p.title, step: p.step, body: <p><Words text={p.text} /></p> }))]
+        : [{ key: "intro", title: "How it works", body: <p className="lead"><Words text={b.intro_eng ?? "This topic is mostly about the idea, so the simple explanation is the full story."} /></p> },
+          ...techPoints.map((p, k) => ({ key: `e${k}`, title: p.title, step: p.step, body: <p><Words text={p.eng!} /></p> }))]),
+      ...(b.words && b.words.length ? [{ key: "words", title: "Words to know", body: (
+        <div className="p-chips">{b.words.map(([w]) => <Link key={w} to={to(`/glossary/${term_slug(w)}`)} className="p-chip">{w}</Link>)}</div>
+      ) }] : []),
+    ]} />
+  );
+  const sideNotes = <SideNotes>{notes(false)}</SideNotes>;
+  const notesInSide = step === "see" || (step === "try" && plan.switchScene >= 0);
+
   const stage = (
     <div className="p-stage" data-dir={dir} data-step={step}>
       {step === "see" && scene && (
         <div className="p-panel p-see" key={`see-${sceneIdx}`}>
-          <ScenePlayer key={`${t.slug}-${sceneIdx}`} scene={scene} hideSwitches renderText={words} onStep={onStep} variant="stage" fitHeight={!phone}
+          <ScenePlayer key={`${t.slug}-${sceneIdx}`} scene={scene} hideSwitches renderText={words} onStep={onStep} variant="stage" fitHeight={!phone} side={sideNotes}
             autoplay={false} onFinished={() => { if (lastScene) void sendWatched(); }} />
         </div>
       )}
@@ -440,7 +486,7 @@ export function Player({ home = false }: { home?: boolean }) {
             <li><b>3</b>Press Replay and see what breaks</li>
           </ol>
           {plan.switchScene >= 0 ? (
-            <ScenePlayer key={`${t.slug}-try`} scene={b.scenes[plan.switchScene]!} renderText={words} onStep={onStep} autoplay={false} variant="stage" fitHeight={!phone} switchesLabel="Switch something off and watch what breaks" />
+            <ScenePlayer key={`${t.slug}-try`} scene={b.scenes[plan.switchScene]!} renderText={words} onStep={onStep} autoplay={false} variant="stage" fitHeight={!phone} side={sideNotes} switchesLabel="Switch something off and watch what breaks" />
           ) : plan.tryQ && <QuestionStage topic={t.slug} questions={[plan.tryQ]} passed={t.progress?.passed_ids ?? []} phone={phone} />}
         </div>
       )}
@@ -489,7 +535,7 @@ export function Player({ home = false }: { home?: boolean }) {
           <h1>{t.title}</h1>
         </div>
         <div className="p-nav">
-          <button type="button" className="p-readtop" aria-expanded={readOpen} onClick={() => setReadOpen((o) => !o)} title="The full explanation, in Simple English or Technical">Read notes</button>
+          {!notesInSide && <button type="button" className="p-readtop" aria-expanded={readOpen} onClick={() => setReadOpen((o) => !o)} title="The full explanation, in Simple English or Technical">Read notes</button>}
           {t.lab && <Link className="p-lab" to={`/lab/${t.lab.slug}`} title="A hands-on project, step by step"><span aria-hidden="true">⚗</span> Guided lab</Link>}
         <ol className="p-steps" aria-label="Steps">
           {plan.steps.map((s, k) => (
@@ -522,26 +568,9 @@ export function Player({ home = false }: { home?: boolean }) {
         {stepNext}
       </div>
 
-      {readOpen && <button type="button" className="p-text-scrim" aria-label="Close the notes" onClick={() => setReadOpen(false)} />}
-      <section className={`p-text ${readOpen ? "open" : ""}`} aria-label="Explanation" aria-hidden={!readOpen} onKeyDown={(e) => { if (e.key === "Escape") setReadOpen(false); }}>
-        <TextCards key={`${t.slug}-${mode}`} follow={step === "see" && sceneIdx === 0 ? sceneAt : null}
-          head={<>
-            <div className="p-toggle" role="group" aria-label="Explanation style">
-              <button type="button" aria-pressed={mode === "simple"} onClick={() => setMode("simple")}>Simple English</button>
-              <button type="button" aria-pressed={mode === "eng"} onClick={() => setMode("eng")}>Technical</button>
-            </div>
-            <button type="button" className="p-read-close" onClick={() => setReadOpen(false)} aria-label="Close the notes">✕</button>
-          </>}
-          cards={[
-          ...(mode === "simple"
-            ? [{ key: "intro", title: "In short", body: <p className="lead"><Words text={b.intro} /></p> },
-              ...b.points.map((p, k) => ({ key: `p${k}`, title: p.title, step: p.step, body: <p><Words text={p.text} /></p> }))]
-            : [{ key: "intro", title: "How it works", body: <p className="lead"><Words text={b.intro_eng ?? "This topic is mostly about the idea, so the simple explanation is the full story."} /></p> },
-              ...techPoints.map((p, k) => ({ key: `e${k}`, title: p.title, step: p.step, body: <p><Words text={p.eng!} /></p> }))]),
-          ...(b.words && b.words.length ? [{ key: "words", title: "Words to know", body: (
-            <div className="p-chips">{b.words.map(([w]) => <Link key={w} to={to(`/glossary/${term_slug(w)}`)} className="p-chip">{w}</Link>)}</div>
-          ) }] : []),
-        ]} />
+      {readOpen && !notesInSide && <button type="button" className="p-text-scrim" aria-label="Close the notes" onClick={() => setReadOpen(false)} />}
+      <section className={`p-text ${readOpen && !notesInSide ? "open" : ""}`} aria-label="Explanation" aria-hidden={!readOpen || notesInSide} onKeyDown={(e) => { if (e.key === "Escape") setReadOpen(false); }}>
+        {notes(true)}
       </section>
     </main>
   );

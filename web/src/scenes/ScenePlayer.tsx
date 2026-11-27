@@ -36,6 +36,8 @@ type Props = {
   variant?: "card" | "stage";
   /** Stage only: fit the visual to the stage height too (false on phones: width only). */
   fitHeight?: boolean;
+  /** Stage only: shown under the caption in the side column (the lesson notes). */
+  side?: ReactNode;
 };
 
 type Actor = { id: string; label: string; x: number; y: number };
@@ -110,7 +112,7 @@ function FlowArea({ scene, children }: { scene: Scene; children: ReactNode }) {
   );
 }
 
-export function ScenePlayer({ scene, autoplay = true, pace = 3800, onStep, onFinished, jump, tag, hideSwitches, switchesLabel, renderText, variant = "card", fitHeight = true }: Props) {
+export function ScenePlayer({ scene, autoplay = true, pace = 3800, onStep, onFinished, jump, tag, hideSwitches, switchesLabel, renderText, variant = "card", fitHeight = true, side }: Props) {
   const [sw, setSw] = useState<Record<string, boolean>>(() =>
     Object.fromEntries((scene.switches ?? []).map((s) => [s.id, true])));
   const steps = useMemo(() => visibleSteps(scene, sw), [scene, sw]);
@@ -259,11 +261,12 @@ export function ScenePlayer({ scene, autoplay = true, pace = 3800, onStep, onFin
           )}
           {switchesUi}
         </div>
-        <div className="ss-side">
+        <div className={`ss-side ${side ? "with-notes" : ""}`}>
           <span className="ss-title">{scene.title}</span>
           <div ref={capRef} className={`ss-cap ${tone === "bad" ? "bad" : tone === "good" ? "good" : ""}`} aria-live="polite">
             <p style={{ fontSize: capSize }}>{!started ? "Tap Next to begin." : renderText ? renderText(step.caption) : step.caption}</p>
           </div>
+          {side}
         </div>
       </div>
     );

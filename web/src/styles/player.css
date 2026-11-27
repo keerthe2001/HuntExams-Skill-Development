@@ -270,13 +270,24 @@ html.in-player, html.in-player body { height: 100%; overflow: hidden; }
 .ss-cap { flex: 1 1 auto; min-height: 0; overflow: hidden; padding: 16px 18px; border-radius: 14px; background: var(--card-2); display: flex; align-items: flex-start; }
 .ss-cap p { margin: 0; font-size: 20px; line-height: 1.5; color: var(--fg); animation: p-in .35s ease both; }
 .ss-cap.bad { background: var(--bad-soft); }
+@container stage (min-width: 601px) { .ss:has(.with-notes) { grid-template-columns: minmax(0, 1fr) clamp(270px, 30%, 400px); } }
+/* With the notes in the column: the caption takes what it needs, the notes take the rest. */
+.ss-side.with-notes .ss-cap { flex: 0 1 auto; max-height: 45%; }
+.p-sidenotes { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); }
+.p-sidenotes .p-cardset { gap: 8px; }
+.p-sidenotes .p-cardhead { flex-wrap: wrap; gap: 8px; }
+.p-sidenotes .p-cardhead .p-toggle { width: 100%; }
+.p-sidenotes .p-cardhead .p-toggle button { flex: 1; padding: 0 8px; }
+.p-sidenotes .p-cardnav { width: 100%; justify-content: space-between; margin-left: 0; }
+.p-sidenotes .p-tcard { font-size: var(--nfs, 18px); line-height: 1.5; }
+.p-sidenotes .p-tcard-title { font-size: calc(var(--nfs, 18px) * .95); }
 .ss-cap.good { background: var(--good-soft); }
 .ss .switches { flex: none; border-top: 1px solid var(--line); padding: 10px 4px 0; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
 .ss .switches .label { width: 100%; }
 /* Small labels inside the visuals stay readable at stage scale. */
 .ss-vis .cell, .ss-vis .xchip, .ss-vis .sl-cards span, .ss-vis .mchips, .ss-vis .eng-note, .ss-vis .gstate, .ss-vis .chip { font-size: 15px; }
 .ss-vis .chip small, .ss-vis .var .t { font-size: 13px; }
-.ss-vis .space-svg text { font-size: 23px; }
+.ss-vis .space-svg text { font-size: 26px; }
 .ss-vis .eng, .ss-vis .legend span { font-size: 14px; }
 .ss-vis .mlog, .ss-vis .sl-text .d, .ss-vis .space-legend span { font-size: 15px; }
 .ss-ctl { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; }
@@ -301,6 +312,8 @@ html.in-player, html.in-player body { height: 100%; overflow: hidden; }
   .ss-steps button span { display: none; }
   .ss-steps button.cur span { display: inline; }
   .ss-side { container-type: normal; overflow: visible; }
+  .ss-side.with-notes .ss-cap { max-height: none; }
+  .p-sidenotes { flex: none; overflow: visible; }
   .ss-cap { padding: 10px 12px; }
   .ss-btn { min-height: 44px; padding: 0 14px; font-size: 15px; }
   .ss-btn.play { min-width: 0; }
