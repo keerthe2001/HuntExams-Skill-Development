@@ -398,8 +398,7 @@ export function Player({ home = false }: { home?: boolean }) {
         </div>
       )}
       {step === "build" && (
-        <div className="p-panel" key="build">
-          <h2 className="p-h">Build it in real Python.</h2>
+        <div className="p-panel p-build" key="build">
           <Suspense fallback={<Loading label="Loading Python" />}><BuildStep t={t} phone={phone} /></Suspense>
         </div>
       )}

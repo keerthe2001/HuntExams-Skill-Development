@@ -144,16 +144,17 @@ await wrongCard.locator(".fb").waitFor();
 ok(/Not yet/.test(await wrongCard.locator(".fb").textContent() ?? ""), "wrong answer gets 'Not yet' feedback");
 
 step("Run the worked example in the Python sandbox and watch each line");
-await page.goto(`${BASE}/learn/variables?step=build`); await page.waitForSelector(".codebox");
-await page.click("text=▶ Run and watch each line");
-await page.waitForSelector(".viz .says", { timeout: 90000 });
-ok(/Creates price = 120|price/.test(await page.locator(".viz .says").textContent() ?? ""), "visualizer narrates the executed line");
+await page.goto(`${BASE}/learn/variables?step=build`); await page.waitForSelector(".b-code");
+await page.click("text=▶ Run and watch");
+await page.waitForSelector(".b-says", { timeout: 90000 });
+ok(/Creates price = 120|price/.test(await page.locator(".b-says").textContent() ?? ""), "visualizer narrates the executed line");
 
 step("Code exercise: fail, reveal solution, pass");
+await page.click("text=2 · Your turn");
 const exCheck = page.locator("button", { hasText: "Check my code" });
-await exCheck.click(); await page.waitForSelector(".w-build-ex .alert");
+await exCheck.click(); await page.waitForSelector(".b-verdict");
 await exCheck.click(); await page.waitForTimeout(1500);
-await page.click("text=Show a solution"); await page.click("text=Use it");
+await page.click("text=Show a solution");
 await exCheck.click();
 await page.waitForSelector("text=All checks passed", { timeout: 30000 });
 ok(true, "exercise passes with the solution");
@@ -242,10 +243,10 @@ step("Phone: world steps, tap-to-build and lab tabs");
 const phone = await browser.newContext(devices["iPhone 13"]);
 const pp = await phone.newPage(); watch(pp, "phone");
 await pp.goto(`${BASE}/learn/rag-architecture?step=build`); await pp.waitForSelector(".p-steps");
-ok(await pp.isVisible("text=Run and watch each line"), "phone: Build step shows the runnable example");
+ok(await pp.isVisible("text=▶ Run and watch"), "phone: Build step shows the runnable example");
 await pp.goto(`${BASE}/learn/rag-architecture?step=quiz`); await pp.waitForSelector(".q");
 ok(await pp.isVisible(".q"), "phone: Quiz step shows questions");
-await pp.goto(`${BASE}/learn/what-is-a-program?step=build`); await pp.waitForSelector(".w-blocks");
+await pp.goto(`${BASE}/learn/what-is-a-program?step=build`); await pp.click("text=2 · Your turn"); await pp.waitForSelector(".w-blocks");
 await pp.waitForTimeout(800); // let web fonts swap in before tapping
 for (let h = 0; h < 20 && await pp.locator(".w-pool .w-line").count(); h++) {
   await pp.locator("text=Hint").evaluate((el) => el.scrollIntoView({ block: "center" }));

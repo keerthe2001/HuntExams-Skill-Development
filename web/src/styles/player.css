@@ -104,6 +104,75 @@ html.in-player, html.in-player body { height: 100%; overflow: hidden; }
 .p-see { grid-template-rows: minmax(0, 1fr); height: 100%; }
 .p-try-scene { grid-template-rows: auto minmax(0, 1fr); height: 100%; }
 
+/* ---------------------------------------------------------------- build step: fits the stage */
+.p-build { height: 100%; grid-template-rows: minmax(0, 1fr); }
+.b-wrap { height: 100%; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; }
+.b-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.b-title { font-size: clamp(18px, 1.7vw, 22px); }
+.b-grid { min-height: 0; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 14px; }
+.b-code, .b-result { min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.b-code { border-radius: var(--r-lg); background: var(--code-bg); color: var(--code-fg); border: 1px solid var(--line); overflow: hidden; }
+.b-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px 10px 16px; border-bottom: 1px solid rgb(255 255 255 / .08); font-family: var(--font-mono); font-size: 13px; color: var(--code-dim); }
+.b-runbtn { min-height: 42px; padding: 0 18px; border-radius: 999px; border: 0; background: var(--brand); color: var(--brand-on); font: 700 15px var(--font-body); cursor: pointer; white-space: nowrap; }
+.b-runbtn.ghost { background: transparent; color: var(--code-fg); border: 1px solid #2f4033; }
+.b-runbtn:disabled { opacity: .5; cursor: default; }
+/* Code lines size themselves to the space: long examples get a smaller font, never a scrollbar. */
+.b-lines { flex: 1; min-height: 0; container-type: size; padding: 8px 0; display: flex; flex-direction: column; }
+.b-line { all: unset; box-sizing: border-box; cursor: pointer; display: flex; gap: 14px; align-items: center; padding: 0 16px; font-family: var(--font-mono); font-size: clamp(11px, calc(100cqh / var(--n) / 1.75), 17px); line-height: 1.7; white-space: pre; border-left: 3px solid transparent; }
+.b-line .n { color: var(--code-dim); min-width: 1.6em; text-align: right; font-size: .85em; }
+.b-line .src { overflow: hidden; text-overflow: ellipsis; }
+.b-line:hover { background: rgb(255 255 255 / .04); }
+.b-line.sel { background: rgb(245 196 81 / .10); border-left-color: var(--acc); }
+.b-line.live { background: rgb(94 234 154 / .12); border-left-color: var(--brand); }
+.b-explain { flex: none; padding: 12px 16px; border-top: 1px solid rgb(255 255 255 / .08); font-size: 15px; line-height: 1.5; min-height: 3.6em; color: #d5e2da; }
+.b-explain .faint { color: var(--code-dim); }
+.b-explain .bad { color: var(--bad); }
+.b-run { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: var(--r-lg); background: var(--card); border: 1px solid var(--line); overflow: hidden; }
+.b-empty { align-items: center; justify-content: center; text-align: center; color: var(--fg-2); }
+.b-empty p { max-width: 32ch; font-size: 15px; }
+.b-play { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); font-size: 20px; }
+.b-says { flex: none; padding: 12px 14px; border-radius: 12px; background: var(--card-2); }
+.b-says p { margin: 2px 0 0; font-size: clamp(15px, 1.2vw, 18px); line-height: 1.45; color: var(--fg); }
+.b-says.bad { background: var(--bad-soft); }
+.b-k, .b-label { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: .06em; color: var(--faint); text-transform: uppercase; }
+.b-ctl { flex: none; display: flex; align-items: center; gap: 8px; }
+.b-ctl button { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line-2); background: transparent; color: var(--fg); font-size: 18px; cursor: pointer; }
+.b-ctl button.play { background: var(--brand-soft); border-color: transparent; }
+.b-ctl button:disabled { opacity: .35; cursor: default; }
+.b-ctl input { flex: 1; accent-color: var(--brand); }
+.b-vars { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 6px; }
+.b-varlist { display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start; overflow: hidden; }
+.b-var { display: inline-flex; align-items: baseline; gap: 6px; padding: 6px 10px; border-radius: 10px; background: var(--code-bg); color: var(--code-fg); font-family: var(--font-mono); font-size: 14px; max-width: 100%; }
+.b-var .k { color: #7dd3fc; }
+.b-var .v { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.b-var .t { font-size: 11px; color: var(--code-dim); }
+.b-var.changed { outline: 2px solid var(--brand); animation: p-pop .4s ease; }
+.b-none { font-size: 14px; color: var(--faint); }
+.b-outbox { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; max-height: 40%; }
+.b-out { margin: 0; flex: 1; min-height: 2.2em; overflow: hidden; padding: 10px 12px; border-radius: 10px; background: var(--code-bg); color: var(--code-fg); font: 14px/1.5 var(--font-mono); white-space: pre-wrap; }
+.b-out .new { background: rgb(94 234 154 / .18); }
+.b-out.err { color: var(--bad); }
+.b-task { flex: none; padding: 12px 16px; border-bottom: 1px solid rgb(255 255 255 / .08); }
+.b-task p { margin: 4px 0 0; font-size: 15px; line-height: 1.5; color: #e6efe9; }
+.b-editor { flex: 1; min-height: 0; display: flex; }
+.b-editor > * { flex: 1; min-width: 0; }
+.b-editor .cm-editor { height: 100%; border-radius: 0; }
+.b-actions { flex: none; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border-top: 1px solid rgb(255 255 255 / .08); }
+.b-link { background: none; border: 0; color: var(--code-dim); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; padding: 8px 4px; font-size: 14px; }
+.b-status { margin-left: auto; font-family: var(--font-mono); font-size: 11.5px; color: var(--code-dim); }
+.b-verdict { flex: none; padding: 12px 14px; border-radius: 12px; font-size: 15px; }
+.b-verdict.good { background: var(--good-soft); color: var(--fg); }
+.b-verdict.bad { background: var(--bad-soft); color: var(--fg); }
+.b-blocks { min-height: 0; overflow-y: auto; display: grid; gap: 8px; align-content: start; }
+@container stage (max-width: 760px) {
+  .p-build, .b-wrap { height: auto; }
+  .b-grid { grid-template-columns: minmax(0, 1fr); }
+  .b-lines { container-type: normal; }
+  .b-line { font-size: 13px; }
+  .b-run { min-height: 220px; }
+  .b-editor { min-height: 180px; }
+}
+
 /* ---------------------------------------------------------------- the stage scene */
 .ss { height: 100%; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) clamp(230px, 27%, 330px); grid-template-rows: minmax(0, 1fr) auto; gap: 14px 18px; padding: 14px; border-radius: var(--r-lg); background: var(--card); border: 1px solid var(--line); }
 .ss-vis { min-width: 0; min-height: 0; display: flex; border-radius: 14px; background: radial-gradient(circle at 50% 45%, var(--card-2), var(--bg-2) 80%); border: 1px solid var(--line); padding: 10px; }
