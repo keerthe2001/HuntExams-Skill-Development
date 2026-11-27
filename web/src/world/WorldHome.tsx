@@ -1,13 +1,14 @@
 // Arrival and the universe: one line, "Enter", then every world of the AI roadmap as a planet
 // on a glowing path. Tap a planet to land on it.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation } from "react-router";
+import { useLocation } from "react-router";
 
 import { ErrorBox } from "@/components/Layout";
 import { useApi } from "@/lib/session";
 import type { Curriculum } from "@/lib/types";
 import { useTitle } from "@/lib/util";
 
+import { prefetchTopic, WarpLink, whenIdle } from "./fx";
 import { useLang } from "./lang";
 import { useProgress } from "./progress";
 import { hue, Hud, PathLine, pathPoints, WorldFooter, worldName } from "./Shell";
@@ -15,11 +16,13 @@ import { hue, Hud, PathLine, pathPoints, WorldFooter, worldName } from "./Shell"
 const SEEN = "hx-arrived";
 
 export function Planet({ n, size, done, total, pulse }: { n: number; size: number; done: number; total: number; pulse?: boolean }) {
+  // Same name on the roadmap and on the world page, so the planet flies between them.
+  const vt = { viewTransitionName: `planet-${n}` };
   const [a, b] = hue(n);
   const r = size / 2 + 7;
   const c = 2 * Math.PI * r;
   return (
-    <span className={`w-planet ${pulse ? "pulse" : ""}`} style={{ width: size, height: size, ["--pa" as string]: a, ["--pb" as string]: b }}>
+    <span className={`w-planet ${pulse ? "pulse" : ""}`} style={{ ...vt, width: size, height: size, ["--pa" as string]: a, ["--pb" as string]: b }}>
       <svg viewBox={`0 0 ${size + 18} ${size + 18}`} className="w-ring" aria-hidden="true">
         <circle cx={size / 2 + 9} cy={size / 2 + 9} r={r} className="bg" />
         <circle cx={size / 2 + 9} cy={size / 2 + 9} r={r} className="fg" strokeDasharray={`${total ? (done / total) * c : 0} ${c}`} />
@@ -57,6 +60,8 @@ export function WorldHome({ arrival = true }: { arrival?: boolean }) {
   const ROW = 230;
   const pts = pathPoints(worlds.length, ROW, 24);
   const firstTopic = worlds[0]?.topics.find((t) => !done.has(t.slug)) ?? worlds[0]?.topics[0];
+  // Have the first place ready before the learner taps it.
+  useEffect(() => { if (firstTopic) whenIdle(() => prefetchTopic(firstTopic.slug)); }, [firstTopic]);
 
   useEffect(() => {
     if (!entered || !worlds.length || hash) return;
@@ -80,7 +85,7 @@ export function WorldHome({ arrival = true }: { arrival?: boolean }) {
         <div className="w-uni-head">
           <span className="w-kicker">The AI roadmap</span>
           <h1>Your journey to agentic AI</h1>
-          {firstTopic && <Link className="w-go" to={to(`/learn/${firstTopic.slug}`)}>{done.size ? "Continue" : "Start here"} → {firstTopic.title}</Link>}
+          {firstTopic && <WarpLink className="w-go" to={to(`/learn/${firstTopic.slug}`)} preload={firstTopic.slug}>{done.size ? "Continue" : "Start here"} → {firstTopic.title}</WarpLink>}
         </div>
         {error && !data ? <ErrorBox error={error} retry={reload} /> : (
           <div className="w-map" style={{ height: worlds.length * ROW }}>
@@ -89,15 +94,15 @@ export function WorldHome({ arrival = true }: { arrival?: boolean }) {
               const s = stats[i]!;
               const p = pts[i]!;
               return (
-                <Link key={w.slug} id={`world-${i}`} to={to(`/world/${w.slug}`)} className={`w-node w-world ${p.x > 50 ? "right" : "left"}`}
-                  style={{ left: `${p.x}%`, top: p.y }} aria-label={`${worldName(w.number)}: ${w.title}. ${s.done} of ${s.total} places done.`}>
+                <WarpLink key={w.slug} id={`world-${i}`} to={to(`/world/${w.slug}`)} className={`w-node w-world ${p.x > 50 ? "right" : "left"}`}
+                  style={{ left: `${p.x}%`, top: p.y, ["--i" as string]: i }} aria-label={`${worldName(w.number)}: ${w.title}. ${s.done} of ${s.total} places done.`}>
                   <Planet n={w.number} size={i === current ? 108 : 86} done={s.done} total={s.total} pulse={i === current} />
                   <span className="w-node-label">
                     <small>{worldName(w.number)}{w.optional ? " · optional" : ""}</small>
                     <b>{w.title}</b>
                     <em>{s.done ? `${s.done}/${s.total} places` : `${s.total} places`}</em>
                   </span>
-                </Link>
+                </WarpLink>
               );
             })}
           </div>

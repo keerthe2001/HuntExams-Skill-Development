@@ -17,6 +17,7 @@ from html import escape
 from typing import Any
 
 from fastapi import APIRouter, FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -146,6 +147,7 @@ def render_shell(
     article: str,
     jsonld: list[dict[str, Any]] | None = None,
     image: str | None = None,
+    extra_head: list[str] | None = None,
 ) -> str:
     """Put this page's meta tags and full text into the built index.html."""
     canonical = _abs(settings, path if lang not in PUBLISHED_LANGS else _lang_path(lang, path))
@@ -175,6 +177,7 @@ def render_shell(
         data = json.dumps(block, ensure_ascii=False).replace("<", "\\u003c")
         head.append(f'<script type="application/ld+json">{data}</script>')
     head.append(f"<style>{SSR_CSS}</style>")
+    head += extra_head or []
 
     html = re.sub(r"<title>.*?</title>", "", template, count=1, flags=re.S)
     html = re.sub(r'<meta name="description"[^>]*>\s*', "", html, count=1)
@@ -367,9 +370,33 @@ def glossary_term(g: dict[str, Any], lang: str) -> tuple[str, str, str]:
 # ---------------------------------------------------------------- routes
 
 
-def register(app: FastAPI, template: str) -> None:
+def preload_files(manifest: dict[str, Any] | None, key: str) -> list[str]:
+    """The JS chunks a lazy page needs (from Vite's manifest), minus the main entry."""
+    if not manifest or key not in manifest:
+        return []
+    entry = next((v["file"] for v in manifest.values() if v.get("isEntry")), None)
+    out: list[str] = []
+    stack = [key]
+    while stack:
+        item = manifest.get(stack.pop())
+        if not item or item["file"] == entry or item["file"] in out:
+            continue
+        out.append(item["file"])
+        stack += item.get("imports", [])
+    return out
+
+
+def boot_script(data: dict[str, Any]) -> str:
+    """The page's first API responses, so the app renders without waiting for requests."""
+    raw = json.dumps(jsonable_encoder(data), ensure_ascii=False, separators=(",", ":"))
+    safe = raw.replace("<", "\\u003c").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+    return f"<script>window.__HX__={safe}</script>"
+
+
+def register(app: FastAPI, template: str, manifest: dict[str, Any] | None = None) -> None:
     """Add the server-rendered routes. Call before the web app's catch-all route."""
     router = APIRouter(include_in_schema=False)
+    topic_chunks = preload_files(manifest, "src/world/TopicWorld.tsx")
 
     async def respond(
         request: Request, db: Any, settings: Any, lang: str, path: str
@@ -457,6 +484,19 @@ def register(app: FastAPI, template: str) -> None:
                 '<p><a href="/">Back to the AI roadmap</a></p></main>',
             )
         title, description, article = found
+        extra: list[str] = []
+        if status == 200:
+            from app import routes_learn
+
+            boot: dict[str, Any] = {}
+            if path == "/" or path.startswith("/world/"):
+                boot["/curriculum"] = await routes_learn.curriculum(db)
+            elif path.startswith("/learn/"):
+                slug = path.removeprefix("/learn/")
+                boot[f"/topics/{slug}"] = await routes_learn.get_topic(slug, db, None)
+                extra += [f'<link rel="modulepreload" href="/{f}" />' for f in topic_chunks]
+            if boot:
+                extra.append(boot_script(boot))
         html = render_shell(
             template,
             settings,
@@ -466,6 +506,7 @@ def register(app: FastAPI, template: str) -> None:
             description=description,
             article=article,
             jsonld=jsonld,
+            extra_head=extra,
         )
         if status == 404:
             html = html.replace("</head>", '<meta name="robots" content="noindex" /></head>', 1)

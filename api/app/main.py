@@ -1,3 +1,4 @@
+import json
 import logging
 import mimetypes
 from collections.abc import AsyncIterator
@@ -86,6 +87,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         path = request.url.path
         if path.startswith(("/admin", "/api/admin")):
             response.headers.setdefault("X-Robots-Tag", "noindex, nofollow")
+        if path in ("/api/curriculum", "/api/glossary") and response.status_code == 200:
+            # The same for everyone and changes only when content is published.
+            response.headers.setdefault(
+                "Cache-Control", "public, max-age=300, stale-while-revalidate=86400"
+            )
         if path.startswith(("/assets/", "/pyodide/")):
             response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
         else:
@@ -156,7 +162,9 @@ def _serve_web(app: FastAPI, dist: Path) -> None:
         logger.warning("HX_WEB_DIST=%s has no index.html; website not served", dist)
         return
     # Server-rendered pages for the learning world (full text for search engines).
-    seo.register(app, index.read_text(encoding="utf-8"))
+    manifest_path = root / ".vite" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else None
+    seo.register(app, index.read_text(encoding="utf-8"), manifest)
 
     @app.get("/{path:path}", include_in_schema=False)
     async def spa(path: str) -> FileResponse:

@@ -1,6 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { api, ApiError } from "./api";
+import { takeBoot, takePrimed } from "./boot";
 import type { User } from "./types";
 
 type Toast = { id: number; text: string; icon?: string };
@@ -87,14 +88,19 @@ export function useSession(): Ctx {
 
 /** Load data from the API with loading and error state. */
 export function useApi<T>(path: string | null, deps: unknown[] = []) {
-  const [data, setData] = useState<T | null>(null);
+  // Server-rendered pages carry their first data, so the first render needs no request.
+  const [booted] = useState(() => (path ? { path, data: takeBoot<T>(path) } : null));
+  const [data, setData] = useState<T | null>(booted?.data ?? null);
   const [error, setError] = useState<ApiError | null>(null);
-  const [loading, setLoading] = useState(Boolean(path));
+  const [loading, setLoading] = useState(Boolean(path) && booted?.data === undefined);
+  const skip = useRef(booted?.data !== undefined ? booted.path : null);
   const load = useCallback(async () => {
     if (!path) { setLoading(false); return; }
+    if (skip.current === path) { skip.current = null; return; }
+    skip.current = null;
     setLoading(true);
     setError(null);
-    try { setData(await api<T>(path)); } catch (e) { setError(e instanceof ApiError ? e : new ApiError(0, String(e))); } finally { setLoading(false); }
+    try { setData(await (takePrimed<T>(path) ?? api<T>(path))); } catch (e) { setError(e instanceof ApiError ? e : new ApiError(0, String(e))); } finally { setLoading(false); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, ...deps]);
   useEffect(() => { void load(); }, [load]);

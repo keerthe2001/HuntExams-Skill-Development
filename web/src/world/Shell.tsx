@@ -1,9 +1,10 @@
 // The frame around every place in the world: space behind, a small HUD on top, and nothing else.
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 
 import { useSession } from "@/lib/session";
 
+import { loadTopicWorld, useRipples, whenIdle, WarpLink } from "./fx";
 import { GlossaryProvider } from "./glossary";
 import { LangSwitch, SoonBanner, useLang } from "./lang";
 import { Space } from "./Space";
@@ -52,17 +53,24 @@ export function Hud({ children }: { children?: ReactNode }) {
   const { to } = useLang();
   return (
     <header className="w-hud">
-      <Link to={to("/learn")} className="w-logo" aria-label="HuntExams: the AI roadmap"><span className="mark" aria-hidden="true" /><span>HuntExams</span></Link>
+      <WarpLink back to={to("/learn")} className="w-logo" aria-label="HuntExams: the AI roadmap"><span className="mark" aria-hidden="true" /><span>HuntExams</span></WarpLink>
       <div className="w-hud-mid">{children}</div>
       <div className="w-hud-right"><LangSwitch /><Profile /></div>
     </header>
   );
 }
 
+/** Shown while a place's code loads: the space stays, a soft glow pulses. */
+export function WorldLoading() {
+  return <div className="w-loading" role="status" aria-label="Loading"><span /></div>;
+}
+
 /** Layout route for the world: space background, word help and the language note. */
 export function WorldShell() {
   const { pathname } = useLocation();
   useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+  useRipples();
+  useEffect(() => { whenIdle(() => { void loadTopicWorld(); }); }, []);
   useEffect(() => {
     document.documentElement.classList.add("in-world");
     return () => document.documentElement.classList.remove("in-world");
@@ -72,7 +80,7 @@ export function WorldShell() {
       <div className="world">
         <Space />
         <SoonBanner />
-        <Outlet />
+        <Suspense fallback={<WorldLoading />}><Outlet /></Suspense>
       </div>
     </GlossaryProvider>
   );

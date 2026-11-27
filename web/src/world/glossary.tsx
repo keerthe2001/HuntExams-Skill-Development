@@ -22,7 +22,12 @@ const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export function GlossaryProvider({ children }: { children: ReactNode }) {
   const [terms, setTerms] = useState<Term[]>([]);
-  useEffect(() => { void loadGlossary().then(setTerms); }, []);
+  useEffect(() => {
+    // Word help isn't needed for the first paint; fetch it once the page is idle.
+    const ric = (window as unknown as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+    const run = () => { void loadGlossary().then(setTerms); };
+    if (ric) ric(run, { timeout: 2500 }); else window.setTimeout(run, 800);
+  }, []);
   const value = useMemo<Ctx>(() => {
     const usable = terms.filter((t) => t.term.length >= 2 && t.term.length <= 40);
     const sorted = [...usable].sort((a, b) => b.term.length - a.term.length);

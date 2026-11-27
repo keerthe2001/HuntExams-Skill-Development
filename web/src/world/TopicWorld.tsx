@@ -1,10 +1,9 @@
 // One place in the world (a topic), full screen, one step at a time:
 // See → Experiment → Build → Guided lab → Practice (optional) → done.
 // Steps without content for this topic are skipped. The Read panel is always one tap away.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router";
 
-import { ExampleCode, Exercise } from "@/code/CodeSection";
 import { ErrorBox, Loading } from "@/components/Layout";
 import { api } from "@/lib/api";
 import { useApi, useSession } from "@/lib/session";
@@ -13,12 +12,17 @@ import { useTitle } from "@/lib/util";
 import { QuestionCard } from "@/practice/QuestionCard";
 import { ScenePlayer } from "@/scenes/ScenePlayer";
 
-import { BlockBuilder, canBlockBuild } from "./BlockBuilder";
+import { prefetchTopic, useFly, WarpLink, warp, whenIdle } from "./fx";
 import { Words } from "./glossary";
 import { useLang } from "./lang";
 import { localDoneCount, markDone, useProgress } from "./progress";
 import { ReadSheet } from "./ReadSheet";
-import { hue, Hud, worldName } from "./Shell";
+import { hue, Hud, WorldLoading, worldName } from "./Shell";
+
+// The code editor and Python sandbox are big; they download only when Build opens
+// (and are prefetched quietly in the background once the page is idle).
+const loadBuild = () => import("./BuildStep");
+const BuildStep = lazy(() => loadBuild().then((m) => ({ default: m.BuildStep })));
 
 type StepKey = "see" | "experiment" | "build" | "lab" | "practice" | "done";
 const LABEL: Record<StepKey, string> = { see: "See", experiment: "Experiment", build: "Build", lab: "Guided lab", practice: "Practice", done: "Done" };
@@ -40,18 +44,22 @@ export function TopicWorld() {
   const { slug = "" } = useParams();
   const { to } = useLang();
   const { user, celebrate } = useSession();
-  const nav = useNavigate();
+  const fly = useFly();
+  const [dir, setDir] = useState<"fwd" | "back">("fwd");
   const [params, setParams] = useSearchParams();
   const { data: t, error, loading, reload } = useApi<Topic>(`/topics/${slug}`, [user?.id]);
   const { refresh } = useProgress();
   const [readOpen, setReadOpen] = useState(false);
   const [sceneIdx, setSceneIdx] = useState(0);
-  const [useEditor, setUseEditor] = useState(false);
   const phone = useMedia("(max-width: 700px)");
   const sentWatched = useRef(false);
   useTitle(t?.title ?? "Learning");
+  useEffect(() => {
+    const idle = (window as unknown as { requestIdleCallback?: (f: () => void) => number }).requestIdleCallback ?? ((f: () => void) => window.setTimeout(f, 1500));
+    idle(() => { void loadBuild(); });
+  }, []);
 
-  useEffect(() => { setSceneIdx(0); setReadOpen(false); sentWatched.current = false; setUseEditor(false); }, [slug]);
+  useEffect(() => { setSceneIdx(0); setReadOpen(false); sentWatched.current = false; }, [slug]);
 
   const plan = useMemo(() => {
     if (!t) return null;
@@ -79,15 +87,19 @@ export function TopicWorld() {
   }, [user, t, celebrate, refresh]);
 
   const go = useCallback((k: StepKey) => {
+    if (plan) setDir(plan.steps.indexOf(k) < plan.steps.indexOf(step) ? "back" : "fwd");
+    warp(0.35);
     const next = new URLSearchParams(params);
     if (k === "see") next.delete("step"); else next.set("step", k);
     setParams(next, { replace: false });
     window.scrollTo({ top: 0 });
-  }, [params, setParams]);
+  }, [params, setParams, plan, step]);
 
   useEffect(() => {
     if (step === "done" && t) { markDone(t.slug); void sendWatched(); }
   }, [step, t, sendWatched]);
+  // The next place's code and data load quietly while this one is being explored.
+  useEffect(() => { if (t?.next) { const n = t.next; whenIdle(() => prefetchTopic(n)); } }, [t?.next]);
 
   // Arrow keys move between steps (not while typing in the editor or a field).
   useEffect(() => {
@@ -111,12 +123,11 @@ export function TopicWorld() {
   const scene = b.scenes[sceneIdx];
   const lastScene = sceneIdx >= b.scenes.length - 1;
   const nextStep = plan.steps[at + 1];
-  const blocks = phone && !useEditor && b.exercise && canBlockBuild(b.exercise);
 
   return (
     <div className="w-topic" style={{ ["--wc" as string]: wc }} data-step={step}>
       <Hud>
-        <Link className="w-back" to={to(`/world/${t.level.slug}`)} aria-label={`Back to ${worldName(t.level.number)}`}>←</Link>
+        <WarpLink back className="w-back" to={to(`/world/${t.level.slug}`)} aria-label={`Back to ${worldName(t.level.number)}`}>←</WarpLink>
         <span className="w-where"><small>{worldName(t.level.number)} · {t.number}/{t.count}</small><b>{t.title}</b></span>
       </Hud>
 
@@ -128,7 +139,7 @@ export function TopicWorld() {
         ))}
       </nav>
 
-      <main className="w-stage">
+      <main className="w-stage" data-dir={dir}>
         {step === "see" && scene && (
           <section className="w-panel" aria-label="See it">
             <ScenePlayer key={`${t.slug}-${sceneIdx}`} scene={scene} hideSwitches renderText={words}
@@ -156,15 +167,7 @@ export function TopicWorld() {
         {step === "build" && (
           <section className="w-panel" aria-label="Build it">
             <h2 className="w-h">Build it in real Python.</h2>
-            {b.code && <ExampleCode code={b.code} mode="simple" />}
-            {b.exercise && (
-              <div className="w-build-ex">
-                {blocks ? <BlockBuilder topic={t.slug} ex={b.exercise} /> : <Exercise key={t.slug} topic={t.slug} ex={b.exercise} />}
-                {phone && canBlockBuild(b.exercise) && (
-                  <button type="button" className="w-link" onClick={() => setUseEditor((u) => !u)}>{useEditor ? "Build with blocks instead" : "Type it in the editor instead"}</button>
-                )}
-              </div>
-            )}
+            <Suspense fallback={<WorldLoading />}><BuildStep t={t} phone={phone} /></Suspense>
           </section>
         )}
 
@@ -195,9 +198,9 @@ export function TopicWorld() {
             <span className="w-kicker">Place explored</span>
             <h2>{t.title}</h2>
             <div className="w-row center">
-              {t.next ? <Link className="w-enter" to={to(`/learn/${t.next}`)}>Next place →</Link>
-                : <Link className="w-enter" to={to(`/world/${t.level.slug}`)}>Back to {worldName(t.level.number)} →</Link>}
-              <Link className="w-btn ghost" to={to(`/world/${t.level.slug}`)}>See the world map</Link>
+              {t.next ? <WarpLink className="w-enter" to={to(`/learn/${t.next}`)} preload={t.next}>Next place →</WarpLink>
+                : <WarpLink className="w-enter" to={to(`/world/${t.level.slug}`)}>Back to {worldName(t.level.number)} →</WarpLink>}
+              <WarpLink back className="w-btn ghost" to={to(`/world/${t.level.slug}`)}>See the world map</WarpLink>
             </div>
             {!user && localDoneCount() >= 1 && (
               <Link className="w-card-link" to="/signup"><small>Your journey is saved in this browser only</small><b>Create a free account to keep it</b><span>Earn XP, unlock missions and get a certificate →</span></Link>
@@ -217,7 +220,7 @@ export function TopicWorld() {
             {nextStep === "done" ? (step === "practice" ? "Finish" : "Finish this place") : step === "lab" ? "Skip the lab for now" : `${LABEL[nextStep]} →`}
           </button>
         ) : (
-          <button type="button" className="w-btn primary" onClick={() => nav(to(t.next ? `/learn/${t.next}` : `/world/${t.level.slug}`))}>Continue →</button>
+          <button type="button" className="w-btn primary" onClick={() => fly(to(t.next ? `/learn/${t.next}` : `/world/${t.level.slug}`))}>Continue →</button>
         )}
       </div>
 

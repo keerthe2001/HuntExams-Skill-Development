@@ -6,6 +6,7 @@ import { useApi, useSession } from "@/lib/session";
 import type { Curriculum } from "@/lib/types";
 import { useTitle } from "@/lib/util";
 
+import { WarpLink } from "./fx";
 import { useLang } from "./lang";
 import { useProgress } from "./progress";
 import { hue, Hud, PathLine, pathPoints, WorldFooter, worldName } from "./Shell";
@@ -22,7 +23,7 @@ export function WorldLevel() {
   useTitle(w ? `${worldName(w.number)}: ${w.title}` : "World");
   if (loading && !data) return <><Hud /><Loading label="Landing" /></>;
   if (error || !data) return <><Hud /><ErrorBox error={error} retry={reload} /></>;
-  if (!w) return <><Hud /><main className="w-center"><h1>This world doesn't exist</h1><Link className="w-go" to={to("/learn")}>Back to the roadmap</Link></main></>;
+  if (!w) return <><Hud /><main className="w-center"><h1>This world doesn't exist</h1><WarpLink back className="w-go" to={to("/learn")}>Back to the roadmap</WarpLink></main></>;
 
   const next = data.levels[idx + 1];
   const nextTopic = w.topics.findIndex((t) => !done.has(t.slug));
@@ -33,7 +34,7 @@ export function WorldLevel() {
 
   return (
     <>
-      <Hud><Link className="w-back" to={to("/learn")}>← Roadmap</Link></Hud>
+      <Hud><WarpLink back className="w-back" to={to("/learn")}>← Roadmap</WarpLink></Hud>
       <main className="w-level" style={{ ["--wc" as string]: a }}>
         <div className="w-level-head">
           <Planet n={w.number} size={132} done={doneCount} total={w.topics.length} />
@@ -48,17 +49,17 @@ export function WorldLevel() {
             const isDone = done.has(t.slug);
             const isNext = i === nextTopic;
             return (
-              <Link key={t.slug} to={to(`/learn/${t.slug}`)} className={`w-node w-station ${isDone ? "done" : ""} ${isNext ? "next" : ""} ${p.x > 50 ? "right" : "left"}`}
-                style={{ left: `${p.x}%`, top: p.y }} aria-label={`${t.title}${isDone ? ", done" : isNext ? ", next" : ""}`}>
+              <WarpLink key={t.slug} to={to(`/learn/${t.slug}`)} preload={t.slug} className={`w-node w-station ${isDone ? "done" : ""} ${isNext ? "next" : ""} ${p.x > 50 ? "right" : "left"}`}
+                style={{ left: `${p.x}%`, top: p.y, ["--i" as string]: i }} aria-label={`${t.title}${isDone ? ", done" : isNext ? ", next" : ""}`}>
                 <span className="w-orb">{isDone ? "✓" : i + 1}</span>
                 <span className="w-node-label"><b>{t.title}</b>{t.lab && <em>+ guided lab</em>}</span>
-              </Link>
+              </WarpLink>
             );
           })}
         </div>
         <div className="w-level-end">
           {w.mission && <Link className="w-card-link" to={user ? `/missions/${w.mission.slug}` : "/signup"}><small>World mission</small><b>{w.mission.title}</b><span>Build it for real, get it reviewed →</span></Link>}
-          {next && <Link className="w-go" to={to(`/world/${next.slug}`)}>Fly to {worldName(next.number)}: {next.title} →</Link>}
+          {next && <WarpLink className="w-go" to={to(`/world/${next.slug}`)}>Fly to {worldName(next.number)}: {next.title} →</WarpLink>}
         </div>
         <WorldFooter />
       </main>

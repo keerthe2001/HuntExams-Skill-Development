@@ -246,7 +246,11 @@ ok(await pp.isVisible("text=Run and watch each line"), "phone: Build step shows 
 await pp.goto(`${BASE}/learn/rag-architecture?step=practice`); await pp.waitForSelector(".q");
 ok(await pp.isVisible(".q"), "phone: Practice step shows questions");
 await pp.goto(`${BASE}/learn/what-is-a-program?step=build`); await pp.waitForSelector(".w-blocks");
-for (let h = 0; h < 20 && await pp.locator(".w-pool .w-line").count(); h++) await pp.click("text=Hint");
+await pp.waitForTimeout(800); // let web fonts swap in before tapping
+for (let h = 0; h < 20 && await pp.locator(".w-pool .w-line").count(); h++) {
+  await pp.locator("text=Hint").evaluate((el) => el.scrollIntoView({ block: "center" }));
+  await pp.click("text=Hint");
+}
 await pp.click("text=▶ Run my program");
 ok(await pp.waitForSelector("text=✓ It works", { timeout: 90000 }).then(() => true, () => false), "phone: tap-to-build program runs and passes");
 await pp.goto(`${BASE}/lab/lab-chunking`); await pp.waitForSelector(".lab-tabs");

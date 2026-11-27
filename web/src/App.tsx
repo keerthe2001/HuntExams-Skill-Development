@@ -3,16 +3,41 @@ import { BrowserRouter, Route, Routes } from "react-router";
 
 import { AppLayout, Loading, PublicLayout, RequireAuth } from "@/components/Layout";
 import { SessionProvider, useSession } from "@/lib/session";
-import { Dashboard, Diagnostic, Missions, MyCertificate, PracticeHub, Profile, ProjectPage, Roadmap } from "@/pages/AppPages";
-import { AuthPage, ForgotPassword, Onboarding, ResetPassword } from "@/pages/Auth";
+import { loadTopicWorld } from "@/world/fx";
 import { GlossaryIndex, GlossaryTerm } from "@/world/GlossaryPages";
 import { WorldShell } from "@/world/Shell";
 import { WorldHome } from "@/world/WorldHome";
 import { WorldLevel } from "@/world/WorldLevel";
-import { GuidePage, Guides, Legal, NotFound, PricingPage, Verify } from "@/pages/PublicPages";
+import type { ComponentType } from "react";
+
+/** Lazy-load a named export, so each page's code downloads only when it's opened. */
+function lz<M extends Record<string, unknown>>(load: () => Promise<M>, name: keyof M) {
+  return lazy(() => load().then((m) => ({ default: m[name] as ComponentType<Record<string, unknown>> })));
+}
+const appPages = () => import("@/pages/AppPages");
+const Dashboard = lz(appPages, "Dashboard");
+const Diagnostic = lz(appPages, "Diagnostic");
+const Missions = lz(appPages, "Missions");
+const MyCertificate = lz(appPages, "MyCertificate");
+const PracticeHub = lz(appPages, "PracticeHub");
+const Profile = lz(appPages, "Profile");
+const ProjectPage = lz(appPages, "ProjectPage");
+const Roadmap = lz(appPages, "Roadmap");
+const auth = () => import("@/pages/Auth");
+const AuthPage = lz(auth, "AuthPage");
+const ForgotPassword = lz(auth, "ForgotPassword");
+const Onboarding = lz(auth, "Onboarding");
+const ResetPassword = lz(auth, "ResetPassword");
+const pub = () => import("@/pages/PublicPages");
+const GuidePage = lz(pub, "GuidePage");
+const Guides = lz(pub, "Guides");
+const Legal = lz(pub, "Legal");
+const NotFound = lz(pub, "NotFound");
+const PricingPage = lz(pub, "PricingPage");
+const Verify = lz(pub, "Verify");
 
 // Lessons, labs and admin pull in the editor and scene engines, so they load on demand.
-const TopicWorld = lazy(() => import("@/world/TopicWorld").then((m) => ({ default: m.TopicWorld })));
+const TopicWorld = lazy(() => loadTopicWorld().then((m) => ({ default: m.TopicWorld })));
 const LabPage = lazy(() => import("@/pages/LabPage").then((m) => ({ default: m.LabPage })));
 const admin = () => import("@/pages/Admin");
 const AdminOverview = lazy(() => admin().then((m) => ({ default: m.AdminOverview })));

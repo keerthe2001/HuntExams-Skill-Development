@@ -22,5 +22,7 @@ export default defineConfig({
     port: 4174,
     proxy: apiProxy,
   },
+  // The API reads the manifest to preload the code each server-rendered page needs.
+  build: { manifest: true },
   test: { environment: "jsdom", globals: true },
 });
