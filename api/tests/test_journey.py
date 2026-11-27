@@ -81,7 +81,7 @@ async def test_onboarding_and_plan(client: AsyncClient) -> None:
     body = r.json()
     assert body["profile"]["onboarded"] and body["profile"]["explain_mode"] == "simple"
     state = (await client.get("/api/me/state")).json()
-    assert state["plan"]["start"].startswith("Starter")
+    assert state["plan"]["start"] == "Start here"
     assert state["next"]["kind"] == "watch" and state["levels"][0]["optional"]
     preview = (
         await client.get("/api/me/plan-preview", params={"skill": "advanced", "budget": "weekends"})
@@ -128,7 +128,7 @@ async def test_answers_xp_and_locks(app, client: AsyncClient) -> None:  # type: 
 async def test_practised_needs_watch_and_all_checks(app, client: AsyncClient) -> None:  # type: ignore[no-untyped-def]
     bodies = await _answers(app)
     await register(client)
-    slug = "variables"
+    slug = "what-is-an-ai-agent"
     for q in bodies[slug]["checks"]:
         await client.post(
             f"/api/topics/{slug}/answer", json={"question_id": q["id"], "answer": _right(q)}
@@ -164,18 +164,18 @@ async def test_tune_is_graded_on_the_server(app, client: AsyncClient) -> None:  
 
 async def test_labs_and_events(client: AsyncClient) -> None:
     await register(client)
-    lab = (await client.get("/api/labs/lab-variables")).json()
+    lab = (await client.get("/api/labs/lab-tokenizer")).json()
     ids = [s["id"] for s in lab["body"]["steps"]]
     for i, sid in enumerate(ids):
-        r = await client.post("/api/labs/lab-variables/steps", json={"step_id": sid, "code": "x"})
+        r = await client.post("/api/labs/lab-tokenizer/steps", json={"step_id": sid, "code": "x"})
         assert r.json()["completed"] is (i == len(ids) - 1)
     assert r.json()["xp"] == 40 and "first_lab" in r.json()["achievements"]
-    bad = await client.post("/api/labs/lab-variables/steps", json={"step_id": "nope"})
+    bad = await client.post("/api/labs/lab-tokenizer/steps", json={"step_id": "nope"})
     assert bad.status_code == 404
     run = await client.post("/api/events", json={"kind": "code_run"})
     assert run.json()["achievements"] == ["first_code_run"]
     ex = await client.post(
-        "/api/events", json={"kind": "code_exercise_passed", "topic": "variables"}
+        "/api/events", json={"kind": "code_exercise_passed", "topic": "tokens-and-tokenization"}
     )
     assert ex.json()["xp"] == 30
     none = await client.post(
@@ -342,3 +342,37 @@ async def test_admin_content_publish_and_validation(app, client: AsyncClient) ->
         cfg = (await client.get("/api/public/config")).json()
         # No publisher ID configured, so ads stay off even when a placement is enabled.
         assert cfg["placements"]["homepage_banner"]["enabled"] is False
+
+
+async def test_content_sync_unpublishes_removed_topics_and_keeps_admin_edits(app) -> None:  # type: ignore[no-untyped-def]
+    from sqlalchemy import select
+
+    from app.content import sync_content
+    from app.models import Level, PublishStatus, Topic
+    from tests.conftest import CONTENT
+
+    async with app.state.db.sessionmaker() as db:
+        level = await db.scalar(select(Level).where(Level.number == 1))
+        db.add(
+            Topic(
+                slug="old-removed-topic",
+                level_id=level.id,
+                number=99,
+                title="Old",
+                body={},
+                status=PublishStatus.PUBLISHED,
+            )
+        )
+        edited = await db.scalar(select(Topic).where(Topic.slug == "intro-to-llms"))
+        edited.title, edited.version = "Admin's edited title", 2
+        await db.commit()
+        await sync_content(db, CONTENT, overwrite=True, prune=True)
+        old = await db.scalar(select(Topic).where(Topic.slug == "old-removed-topic"))
+        assert old.status == PublishStatus.DRAFT
+        kept = await db.scalar(select(Topic).where(Topic.slug == "intro-to-llms"))
+        assert kept.title == "Admin's edited title" and kept.status == PublishStatus.PUBLISHED
+        kept.version = 1
+        await sync_content(db, CONTENT, overwrite=True, prune=True)
+        assert (
+            await db.scalar(select(Topic).where(Topic.slug == "intro-to-llms"))
+        ).title != "Admin's edited title"

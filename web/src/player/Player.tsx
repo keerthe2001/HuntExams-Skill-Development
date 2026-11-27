@@ -12,6 +12,7 @@ import { useApi, useSession } from "@/lib/session";
 import type { Curriculum, Question, SceneStep, Topic } from "@/lib/types";
 import { useTitle } from "@/lib/util";
 import { QuestionCard } from "@/practice/QuestionCard";
+import { FitBox } from "@/scenes/FitBox";
 import { ScenePlayer } from "@/scenes/ScenePlayer";
 
 import { FlyLink, prefetchTopic, useFly, whenIdle } from "./fx";
@@ -27,7 +28,7 @@ const BuildStep = lazy(() => loadBuild().then((m) => ({ default: m.BuildStep }))
 type StepKey = "see" | "try" | "build" | "quiz" | "done";
 const LABEL: Record<StepKey, string> = { see: "See", try: "Try", build: "Build", quiz: "Quiz", done: "Done" };
 const WELCOME_KEY = "hx-welcomed";
-const worldName = (n: number) => (n === 0 ? "Starter" : `World ${n}`);
+const worldName = (n: number) => (n === 0 ? "Start here" : `World ${n}`);
 
 function useMedia(q: string) {
   const get = () => typeof window !== "undefined" && Boolean(window.matchMedia?.(q).matches);
@@ -45,12 +46,38 @@ function useMedia(q: string) {
 function readFlag(key: string) { try { return localStorage.getItem(key) === "1"; } catch { return false; } }
 function writeFlag(key: string) { try { localStorage.setItem(key, "1"); } catch { /* private mode */ } }
 
+/** Questions one at a time, scaled to fit the stage: never a scrollbar. */
+function QuestionStage({ topic, questions, passed, phone }: { topic: string; questions: Question[]; passed: string[]; phone: boolean }) {
+  const [i, setI] = useState(0);
+  const q = questions[Math.min(i, questions.length - 1)]!;
+  return (
+    <div className="p-qwrap">
+      <div className="p-qfit">
+        <FitBox design={620} widths={[480, 560, 620, 760]} enabled={!phone} max={1.6}>
+          <QuestionCard key={`${topic}-${q.id}`} topic={topic} q={q} index={i} alreadyPassed={passed.includes(q.id)} />
+        </FitBox>
+      </div>
+      {questions.length > 1 && (
+        <div className="p-qnav">
+          <button type="button" aria-label="Previous question" onClick={() => setI((k) => Math.max(0, k - 1))} disabled={i === 0}>‹</button>
+          <div className="p-carddots">
+            {questions.map((x, k) => <button key={x.id} type="button" aria-label={`Question ${k + 1}`} aria-current={k === i} onClick={() => setI(k)} />)}
+          </div>
+          <span>Question {i + 1} of {questions.length}</span>
+          <span className="p-grow" />
+          <button type="button" aria-label="Next question" onClick={() => setI((k) => Math.min(questions.length - 1, k + 1))} disabled={i === questions.length - 1}>›</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 type TextCard = { key: string; title: string; body: ReactNode; step?: number };
 
 /** The explanation as cards that slide (arrows, dots, swipe, arrow keys), never scroll.
  *  All cards share one grid cell, so the panel is as tall as the tallest card. While the
  *  visual plays, the card for its current step slides in, unless the learner just swiped. */
-function TextCards({ cards, follow }: { cards: TextCard[]; follow: number | null }) {
+function TextCards({ cards, follow, head }: { cards: TextCard[]; follow: number | null; head?: ReactNode }) {
   const [i, setI] = useState(0);
   const [dir, setDir] = useState<"fwd" | "back">("fwd");
   const manualUntil = useRef(0);
@@ -80,6 +107,19 @@ function TextCards({ cards, follow }: { cards: TextCard[]; follow: number | null
         startX.current = null;
         if (Math.abs(dx) > 40) show(i + (dx < 0 ? 1 : -1), true);
       }}>
+      <div className="p-cardhead">
+        {head}
+        {n > 1 && (
+          <div className="p-cardnav">
+            <button type="button" aria-label="Previous card" onClick={() => show(i - 1, true)} disabled={i === 0}>‹</button>
+            <div className="p-carddots">
+              {cards.map((c, k) => <button key={c.key} type="button" aria-label={`Card ${k + 1}: ${c.title}`} aria-current={k === i} onClick={() => show(k, true)} />)}
+            </div>
+            <span className="p-cardcount">{i + 1} / {n}</span>
+            <button type="button" aria-label="Next card" onClick={() => show(i + 1, true)} disabled={i === n - 1}>›</button>
+          </div>
+        )}
+      </div>
       <div className="p-cards" aria-live="polite">
         {cards.map((c, k) => (
           <div key={c.key} className={`p-tcard ${k === i ? "on" : ""}`} data-dir={dir} aria-hidden={k !== i} role="group" aria-label={`${k + 1} of ${n}: ${c.title}`}>
@@ -88,16 +128,6 @@ function TextCards({ cards, follow }: { cards: TextCard[]; follow: number | null
           </div>
         ))}
       </div>
-      {n > 1 && (
-        <div className="p-cardnav">
-          <button type="button" aria-label="Previous card" onClick={() => show(i - 1, true)} disabled={i === 0}>‹</button>
-          <div className="p-carddots">
-            {cards.map((c, k) => <button key={c.key} type="button" aria-label={`Card ${k + 1}: ${c.title}`} aria-current={k === i} onClick={() => show(k, true)} />)}
-          </div>
-          <span className="p-cardcount">{i + 1} / {n}</span>
-          <button type="button" aria-label="Next card" onClick={() => show(i + 1, true)} disabled={i === n - 1}>›</button>
-        </div>
-      )}
     </div>
   );
 }
@@ -199,10 +229,23 @@ function Sidebar({ cur, current, done, open, onClose }: { cur: Curriculum; curre
         {cur.levels.map((lv) => {
           const isOpen = expanded === lv.slug;
           const n = lv.topics.filter((t) => done.has(t.slug)).length;
+          // A world with a single topic (Start here) is one link, with no sub-topics.
+          if (lv.topics.length === 1) {
+            const t = lv.topics[0]!;
+            const isCur = t.slug === current, isDone = done.has(t.slug);
+            return (
+              <section key={lv.slug} className="p-world">
+                <FlyLink to={to(`/learn/${t.slug}`)} preload={t.slug} className={`p-topic p-single ${isCur ? "cur" : ""} ${isDone ? "done" : ""}`} aria-current={isCur ? "page" : undefined} onClick={onClose}>
+                  <span className="p-dot" aria-hidden="true">{isDone ? "✓" : ""}</span>
+                  <span><small>{lv.title}</small>{t.title}</span>
+                </FlyLink>
+              </section>
+            );
+          }
           return (
             <section key={lv.slug} className="p-world">
               <button type="button" className="p-world-btn" aria-expanded={isOpen} onClick={() => setExpanded(isOpen ? null : lv.slug)}>
-                <span><small>{worldName(lv.number)}{lv.optional ? " · optional" : ""}</small>{lv.title}</span>
+                <span><small>{worldName(lv.number)}</small>{lv.title}</span>
                 <em>{n}/{lv.topics.length}</em>
               </button>
               {isOpen && (
@@ -239,7 +282,7 @@ function Sidebar({ cur, current, done, open, onClose }: { cur: Curriculum; curre
 export function Player({ home = false }: { home?: boolean }) {
   const params = useParams();
   const { user, celebrate } = useSession();
-  const { to, lang } = useLang();
+  const { to } = useLang();
   const fly = useFly();
   const [search, setSearch] = useSearchParams();
   const { data: cur, error: curErr, reload: reloadCur } = useApi<Curriculum>("/curriculum");
@@ -249,7 +292,7 @@ export function Player({ home = false }: { home?: boolean }) {
   const { data: t, error, loading, reload } = useApi<Topic>(slug ? `/topics/${slug}` : null, [user?.id]);
   const [mode, setMode] = useState<"simple" | "eng">(user?.profile.explain_mode ?? "simple");
   const [sceneIdx, setSceneIdx] = useState(0);
-  const [caption, setCaption] = useState("");
+
   const [drawer, setDrawer] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [welcomed, setWelcomed] = useState(() => readFlag(WELCOME_KEY));
@@ -265,7 +308,7 @@ export function Player({ home = false }: { home?: boolean }) {
     document.documentElement.classList.add("in-player");
     return () => document.documentElement.classList.remove("in-player");
   }, []);
-  useEffect(() => { setSceneIdx(0); setCaption(""); setSceneAt(null); sentWatched.current = false; setDrawer(false); }, [slug]);
+  useEffect(() => { setSceneIdx(0); setSceneAt(null); sentWatched.current = false; setDrawer(false); }, [slug]);
   useEffect(() => { if (user) setMode(user.profile.explain_mode); }, [user]);
   useEffect(() => { whenIdle(() => { void loadBuild(); }); }, []);
   useEffect(() => { if (t?.next) { const n = t.next; whenIdle(() => prefetchTopic(n)); } }, [t?.next]);
@@ -274,8 +317,9 @@ export function Player({ home = false }: { home?: boolean }) {
     if (!t) return null;
     const b = t.body;
     const switchScene = b.scenes.findIndex((s) => (s.switches ?? []).length > 0);
-    const tryQ: Question | undefined = switchScene >= 0 ? undefined : (b.checks.find((q) => q.type === "tune") ?? b.checks.find((q) => q.type === "predict"));
-    const quiz = b.checks.filter((q) => q !== tryQ);
+    // Try is hands-on only (switch parts off and compare). Questions belong in the quiz.
+    const tryQ: Question | undefined = undefined;
+    const quiz = b.checks;
     const steps: StepKey[] = ["see"];
     if (switchScene >= 0 || tryQ) steps.push("try");
     if (b.code || b.exercise) steps.push("build");
@@ -376,8 +420,7 @@ export function Player({ home = false }: { home?: boolean }) {
   const scene = b.scenes[sceneIdx];
   const lastScene = sceneIdx >= b.scenes.length - 1;
   const words = (s: string) => <Words text={s} />;
-  const onStep = (s: SceneStep) => { setCaption(s.caption); if (step === "see" && sceneIdx === 0) setSceneAt(s.at); };
-  const liveWord = (w: string) => Boolean(caption) && caption.toLowerCase().includes(w.toLowerCase());
+  const onStep = (s: SceneStep) => { if (step === "see" && sceneIdx === 0) setSceneAt(s.at); };
   const techPoints = b.points.filter((p) => p.eng);
   const nextLabel = nextStep === "done" ? "Finish topic" : nextStep ? `Next: ${LABEL[nextStep]}` : "";
 
@@ -390,11 +433,15 @@ export function Player({ home = false }: { home?: boolean }) {
         </div>
       )}
       {step === "try" && (
-        <div className={`p-panel ${plan.switchScene >= 0 ? "p-try-scene" : ""}`} key="try">
-          <h2 className="p-h">Your turn: change it and watch what happens.</h2>
+        <div className={`p-panel ${plan.switchScene >= 0 ? "p-try-scene" : "p-try-q"}`} key="try">
+          <ol className="p-guide" aria-label="How to try it">
+            <li><b>1</b>Press Next and watch it work normally</li>
+            <li><b>2</b>Switch a part off below the picture</li>
+            <li><b>3</b>Press Replay and see what breaks</li>
+          </ol>
           {plan.switchScene >= 0 ? (
             <ScenePlayer key={`${t.slug}-try`} scene={b.scenes[plan.switchScene]!} renderText={words} onStep={onStep} autoplay={false} variant="stage" fitHeight={!phone} switchesLabel="Switch something off and watch what breaks" />
-          ) : plan.tryQ && <QuestionCard key={`${t.slug}-${plan.tryQ.id}`} topic={t.slug} q={plan.tryQ} index={0} alreadyPassed={Boolean(t.progress?.passed_ids.includes(plan.tryQ.id))} />}
+          ) : plan.tryQ && <QuestionStage topic={t.slug} questions={[plan.tryQ]} passed={t.progress?.passed_ids ?? []} phone={phone} />}
         </div>
       )}
       {step === "build" && (
@@ -403,11 +450,8 @@ export function Player({ home = false }: { home?: boolean }) {
         </div>
       )}
       {step === "quiz" && (
-        <div className="p-panel" key="quiz">
-          <h2 className="p-h">Quick quiz <small>optional</small></h2>
-          <div className="p-qs">
-            {plan.quiz.map((q, k) => <QuestionCard key={`${t.slug}-${q.id}`} topic={t.slug} q={q} index={k} alreadyPassed={Boolean(t.progress?.passed_ids.includes(q.id))} />)}
-          </div>
+        <div className="p-panel p-quiz" key="quiz">
+          <QuestionStage topic={t.slug} questions={plan.quiz} passed={t.progress?.passed_ids ?? []} phone={phone} />
         </div>
       )}
       {step === "done" && (
@@ -425,13 +469,27 @@ export function Player({ home = false }: { home?: boolean }) {
     </div>
   );
 
+  // The one "move on" button: next scene, next step, or next topic. Lives in the header (and in
+  // the bottom bar on phones).
+  const stepNext = step === "see" && !lastScene ? (
+    <button type="button" className="p-btn primary" onClick={() => setSceneIdx((k) => k + 1)}>Next scene ({sceneIdx + 2}/{b.scenes.length}) →</button>
+  ) : step === "done" ? (
+    t.next ? <button type="button" className="p-btn primary" onClick={() => fly(to(`/learn/${t.next}`))}>Next topic →</button>
+      : <Link className="p-btn primary" to={to("/")}>Back to the start</Link>
+  ) : (
+    <button type="button" className="p-btn primary" onClick={() => go(nextStep!)}>{nextLabel} →</button>
+  );
+
   const main = (
     <main className="p-mid">
       <div className="p-head">
+        <button type="button" className="p-back" onClick={() => at > 0 && go(order[at - 1]!)} disabled={at === 0} aria-label="Back to the previous step" title="Back">←</button>
         <div className="p-title">
-          <span className="p-crumb">{worldName(t.level.number)} · {t.level.title} · Topic {t.number} of {t.count}</span>
+          <span className="p-crumb">{t.count > 1 ? `${worldName(t.level.number)} · ${t.level.title} · Topic ${t.number} of ${t.count}` : t.level.title}</span>
           <h1>{t.title}</h1>
         </div>
+        <div className="p-nav">
+          {t.lab && <Link className="p-lab" to={`/lab/${t.lab.slug}`} title="A hands-on project, step by step"><span aria-hidden="true">⚗</span> Guided lab</Link>}
         <ol className="p-steps" aria-label="Steps">
           {plan.steps.map((s, k) => (
             <li key={s}>
@@ -441,6 +499,8 @@ export function Player({ home = false }: { home?: boolean }) {
             </li>
           ))}
         </ol>
+        </div>
+        <div className="p-go">{stepNext}</div>
       </div>
 
       {home && !welcomed && (
@@ -458,33 +518,19 @@ export function Player({ home = false }: { home?: boolean }) {
         {at > 0
           ? <button type="button" className="p-btn" onClick={() => go(order[at - 1]!)}>← Back</button>
           : <span />}
-        {step === "see" && b.scenes.length > 1 && (
-          <div className="p-dots" role="tablist" aria-label="Scenes">
-            <span>Scene {sceneIdx + 1} of {b.scenes.length}</span>
-            {b.scenes.map((s, k) => <button key={k} type="button" role="tab" aria-selected={k === sceneIdx} aria-label={`Scene ${k + 1}: ${s.title}`} onClick={() => setSceneIdx(k)} />)}
-          </div>
-        )}
-        <span className="p-grow" />
-        {step === "see" && !lastScene ? (
-          <button type="button" className="p-btn primary" onClick={() => setSceneIdx((k) => k + 1)}>Next scene →</button>
-        ) : step === "done" ? (
-          t.next ? <button type="button" className="p-btn primary" onClick={() => fly(to(`/learn/${t.next}`))}>Next topic →</button>
-            : <Link className="p-btn primary" to={to("/")}>Back to the start</Link>
-        ) : (
-          <button type="button" className="p-btn primary" onClick={() => go(nextStep!)}>{nextLabel} →</button>
-        )}
+        {stepNext}
       </div>
 
-      <section className={`p-text ${readOpen ? "open" : ""}`} aria-label="Explanation">
-        <div className="p-text-head">
-          <div className="p-toggle" role="group" aria-label="Explanation style">
-            <button type="button" aria-pressed={mode === "simple"} onClick={() => setMode("simple")}>Simple English</button>
-            <button type="button" aria-pressed={mode === "eng"} onClick={() => setMode("eng")}>Technical</button>
-          </div>
-          <span className="p-hint">Tap an underlined word for its meaning</span>
-          <button type="button" className="p-read-btn" aria-expanded={readOpen} onClick={() => setReadOpen((o) => !o)}>{readOpen ? "Hide ▾" : "Read ▴"}</button>
-        </div>
-        <TextCards key={`${t.slug}-${mode}`} follow={step === "see" && sceneIdx === 0 ? sceneAt : null} cards={[
+      <section className={`p-text ${readOpen ? "open" : ""} ${step === "see" ? "" : "folded"}`} aria-label="Explanation">
+        <TextCards key={`${t.slug}-${mode}`} follow={step === "see" && sceneIdx === 0 ? sceneAt : null}
+          head={<>
+            <div className="p-toggle" role="group" aria-label="Explanation style">
+              <button type="button" aria-pressed={mode === "simple"} onClick={() => setMode("simple")}>Simple English</button>
+              <button type="button" aria-pressed={mode === "eng"} onClick={() => setMode("eng")}>Technical</button>
+            </div>
+            <button type="button" className="p-read-btn" aria-expanded={readOpen} onClick={() => setReadOpen((o) => !o)}>{readOpen ? "Hide ▾" : "Read ▴"}</button>
+          </>}
+          cards={[
           ...(mode === "simple"
             ? [{ key: "intro", title: "In short", body: <p className="lead"><Words text={b.intro} /></p> },
               ...b.points.map((p, k) => ({ key: `p${k}`, title: p.title, step: p.step, body: <p><Words text={p.text} /></p> }))]
@@ -498,38 +544,5 @@ export function Player({ home = false }: { home?: boolean }) {
     </main>
   );
 
-  const side = (
-    <aside className="p-comp" aria-label="Lesson companion">
-      {b.words && b.words.length > 0 && (
-        <section className="p-card">
-          <span className="p-kicker">Words in this lesson</span>
-          {b.words.map(([w, d]) => (
-            <div key={w} className={`p-word ${liveWord(w) ? "live" : ""}`}>
-              <b>{w}{liveWord(w) && <em>on screen now</em>}</b>
-              <span>{d.replace(/[*`]/g, "")}</span>
-            </div>
-          ))}
-        </section>
-      )}
-      <section className="p-card">
-        <span className="p-kicker">This topic</span>
-        {plan.steps.map((s, k) => (
-          <div key={s} className={`p-check-row ${k < at ? "past" : ""} ${s === step ? "cur" : ""}`}>
-            <span className="p-dot">{k < at ? "✓" : ""}</span>{LABEL[s]}{s === "quiz" ? " (optional)" : ""}
-          </div>
-        ))}
-        <p className="p-note">{user ? "Your progress saves to your account." : <><Link to="/signup">Sign up free</Link> to save progress on every device.</>}</p>
-      </section>
-      {(t.next || t.lab) && (
-        <section className="p-card">
-          <span className="p-kicker">Up next</span>
-          {t.lab && <Link className="p-next" to={`/lab/${t.lab.slug}`}><b>Guided lab: {t.lab.title}</b><span>A hands-on project, step by step →</span></Link>}
-          {t.next && <FlyLink className="p-next" to={to(`/learn/${t.next}`)} preload={t.next}><b>{nextTopicTitle ?? "Next topic"}</b><span>Next topic →</span></FlyLink>}
-        </section>
-      )}
-      {lang !== "en" && <p className="p-note">Tamil and Hindi lessons are on the way.</p>}
-    </aside>
-  );
-
-  return frame(main, side);
+  return frame(main);
 }

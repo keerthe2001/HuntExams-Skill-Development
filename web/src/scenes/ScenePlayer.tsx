@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { Scene, SceneStep } from "@/lib/types";
 
@@ -38,12 +38,57 @@ type Props = {
   fitHeight?: boolean;
 };
 
+type Actor = { id: string; label: string; x: number; y: number };
+
+/** Lays a flow diagram out at the stage's size, choosing the largest box size at which no two
+ *  components (box + name + note) overlap, with breathing room between them. */
+function FlowArea({ scene, children }: { scene: Scene; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState(64);
+  const isCode = scene.engine === "code";
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || isCode || typeof ResizeObserver === "undefined") return;
+    const actors = (scene.actors as Actor[] | undefined) ?? [];
+    const fit = () => {
+      const W = el.clientWidth, H = el.clientHeight;
+      if (!W || !H) return;
+      let best = 40;
+      const cl = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+      for (let b = 200; b >= 40; b -= 4) {
+        // Each component is anchored at its box centre. Above the box: room for the packet that
+        // lands on it. Below: its name and up to three lines of note. Sizes match player.css.
+        const above = b / 2 + 2.05 * cl(b * 0.18, 12, 17) + 4 + 8;
+        const below = b / 2 + b * 0.14 + 1.2 * cl(b * 0.2, 13, 21) + 3 * 1.25 * cl(b * 0.16, 12, 16) + 6;
+        const bw = Math.min(Math.max(b * 2.1, 120), W * 0.3) + 16;
+        const ok = actors.every((a, i) => actors.every((c, j) => j <= i
+          || Math.abs(a.x - c.x) / 100 * W >= bw || Math.abs(a.y - c.y) / 100 * H >= above + below))
+          && actors.every((a) => (a.y / 100) * H >= above && ((100 - a.y) / 100) * H >= below);
+        if (ok) { best = b; break; }
+      }
+      setBox(best);
+    };
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    fit();
+    return () => ro.disconnect();
+  }, [scene, isCode]);
+  const n = String(scene.source ?? "").replace(/\n$/, "").split("\n").length;
+  return (
+    <div ref={ref} className={`ss-native ${scene.engine}`} style={{ ["--n" as string]: n, ["--box" as string]: `${box}px` }}>
+      {children}
+    </div>
+  );
+}
+
 export function ScenePlayer({ scene, autoplay = true, pace = 3800, onStep, onFinished, jump, tag, hideSwitches, switchesLabel, renderText, variant = "card", fitHeight = true }: Props) {
   const [sw, setSw] = useState<Record<string, boolean>>(() =>
     Object.fromEntries((scene.switches ?? []).map((s) => [s.id, true])));
   const steps = useMemo(() => visibleSteps(scene, sw), [scene, sw]);
   const [i, setI] = useState(0);
   const [playing, setPlaying] = useState(autoplay);
+  // Stage: the visual starts empty; the first Next shows the first component.
+  const [started, setStarted] = useState(variant !== "stage");
   const [visible, setVisible] = useState(false);
   const [hover, setHover] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -53,7 +98,7 @@ export function ScenePlayer({ scene, autoplay = true, pace = 3800, onStep, onFin
   const step = steps[idx]!;
   const Engine = ENGINES[scene.engine];
 
-  useEffect(() => { setI(0); finishedRef.current = false; }, [scene]);
+  useEffect(() => { setI(0); finishedRef.current = false; setStarted(variant !== "stage"); }, [scene, variant]);
 
   useEffect(() => {
     const el = rootRef.current;
@@ -64,6 +109,7 @@ export function ScenePlayer({ scene, autoplay = true, pace = 3800, onStep, onFin
   }, []);
 
   useEffect(() => {
+    if (!started) return;
     onStep?.(step, idx);
     if (idx === steps.length - 1 && !finishedRef.current) {
       finishedRef.current = true;
@@ -71,10 +117,10 @@ export function ScenePlayer({ scene, autoplay = true, pace = 3800, onStep, onFin
     }
     // onStep/onFinished are callbacks from the parent; re-running on their identity isn't wanted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idx, step]);
+  }, [idx, step, started]);
 
   useEffect(() => {
-    if (!playing || !visible || hover) return;
+    if (!playing || !visible || hover || !started) return;
     const last = idx >= steps.length - 1;
     const t = window.setTimeout(() => setI(last ? 0 : idx + 1), last ? 6500 : pace);
     return () => window.clearTimeout(t);
@@ -92,6 +138,27 @@ export function ScenePlayer({ scene, autoplay = true, pace = 3800, onStep, onFin
     rootRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "nearest" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jump?.key]);
+
+  // The caption shrinks (down to 14px) until it fits its box: it never scrolls.
+  const capRef = useRef<HTMLDivElement>(null);
+  const [capSize, setCapSize] = useState(20);
+  useLayoutEffect(() => {
+    if (variant !== "stage") return;
+    const box = capRef.current;
+    if (!box) return;
+    const fitText = () => {
+      const p = box.querySelector("p");
+      if (!p) return;
+      let size = 21;
+      p.style.fontSize = `${size}px`;
+      while (size > 14 && box.scrollHeight > box.clientHeight + 1) { size -= 1; p.style.fontSize = `${size}px`; }
+      setCapSize(size);
+    };
+    fitText();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(fitText) : null;
+    ro?.observe(box);
+    return () => ro?.disconnect();
+  }, [variant, step]);
 
   const toggleSwitch = (id: string, on: boolean, track: number) => {
     const next = { ...sw, [id]: on };
@@ -123,43 +190,51 @@ export function ScenePlayer({ scene, autoplay = true, pace = 3800, onStep, onFin
   if (variant === "stage") {
     return (
       <div className="ss" ref={rootRef} aria-roledescription="motion scene">
-        <div className="ss-vis" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
-          {scene.engine === "flow" && fitHeight ? (
-            // Flow diagrams lay out in percentages, so they fill the area natively (crisp, no scaling).
-            <div className="ss-native"><Engine scene={scene} step={step} index={idx} steps={steps} sw={sw} reduce={reduce} /></div>
-          ) : (
-            <FitBox design={scene.engine === "code" ? 600 : 480} fitHeight={fitHeight} max={2.2}>
-              <Engine scene={scene} step={step} index={idx} steps={steps} sw={sw} reduce={reduce} />
-            </FitBox>
-          )}
-        </div>
-        <div className="ss-side">
-          <span className="ss-title">{scene.title}</span>
-          <div className={`ss-cap ${tone === "bad" ? "bad" : tone === "good" ? "good" : ""}`} aria-live="polite">
-            <p>{renderText ? renderText(step.caption) : step.caption}</p>
-          </div>
+        {/* Controls on top: Back in the top-left corner, Next in the top-right corner. */}
+        <div className="ss-ctl">
+          <button className="ss-btn" type="button" onClick={() => { if (idx === 0) setStarted(false); else go(idx - 1); }} disabled={!started} aria-label="Previous step">‹ Back</button>
+          <button className="ss-btn play" type="button" onClick={() => { if (!started) { setStarted(true); setI(0); setPlaying(true); } else setPlaying((p) => !p); }} aria-pressed={playing}>{playing ? "❚❚ Pause" : "▶ Play"}</button>
           <ol className="ss-steps" aria-label="Scene steps">
             {scene.track.map((t, k) => {
-              const cls = [k === step.at ? "cur" : "", seen.has(k) && k !== step.at ? "done" : "", offTracks.includes(k) ? "off" : ""].join(" ");
+              const cls = started ? [k === step.at ? "cur" : "", seen.has(k) && k !== step.at ? "done" : "", offTracks.includes(k) ? "off" : ""].join(" ") : "";
               return (
                 <li key={k}>
-                  <button type="button" className={cls} aria-current={k === step.at ? "step" : undefined}
-                    onClick={() => { const n = steps.findIndex((s) => s.at === k); go(n < 0 ? idx : n); }}>
+                  <button type="button" className={cls} aria-current={started && k === step.at ? "step" : undefined} title={t}
+                    onClick={() => { setStarted(true); const n = steps.findIndex((s) => s.at === k); go(n < 0 ? idx : n); }}>
                     <i>{seen.has(k) && k !== step.at ? "✓" : k + 1}</i><span>{t}</span>
                   </button>
                 </li>
               );
             })}
           </ol>
+          <span className="ss-count">{started ? idx + 1 : 0} / {steps.length}</span>
+          <button className="ss-btn ghost" type="button" onClick={() => { setStarted(true); setI(0); setPlaying(true); }} aria-label="Replay">↺<span className="ss-rl"> Replay</span></button>
+          <button className="ss-btn ss-next" type="button" onClick={() => { if (!started) { setStarted(true); setI(0); } else go(idx + 1); }} disabled={started && idx >= steps.length - 1} aria-label="Next step">Next ›</button>
+        </div>
+        <div className="ss-vis" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+          {!started ? (
+            <div className="ss-start">
+              <button type="button" className="ss-startbtn" onClick={() => { setStarted(true); setI(0); }} aria-label="Start the visual">▶</button>
+              <p>It builds up one piece at a time. Tap <b>Next</b> to see the first piece.</p>
+            </div>
+          ) : scene.engine === "flow" || scene.engine === "code" ? (
+            // Flow diagrams and code walk-throughs lay out natively at the stage's size (crisp text,
+            // no scaling); the code font is sized from the number of lines.
+            <FlowArea scene={scene}>
+              <Engine scene={scene} step={step} index={idx} steps={steps} sw={sw} reduce={reduce} reveal />
+            </FlowArea>
+          ) : (
+            <FitBox design={520} widths={[320, 380, 440, 520, 680, 860]} fitHeight={fitHeight} max={2.2}>
+              <Engine scene={scene} step={step} index={idx} steps={steps} sw={sw} reduce={reduce} reveal />
+            </FitBox>
+          )}
           {switchesUi}
         </div>
-        <div className="ss-ctl">
-          <button className="ss-btn" type="button" onClick={() => go(idx - 1)} disabled={idx === 0} aria-label="Previous step">‹ Back</button>
-          <button className="ss-btn play" type="button" onClick={() => setPlaying((p) => !p)} aria-pressed={playing}>{playing ? "❚❚ Pause" : "▶ Play"}</button>
-          <button className="ss-btn" type="button" onClick={() => go(idx + 1)} disabled={idx >= steps.length - 1} aria-label="Next step">Next ›</button>
-          <div className="ss-progress" aria-hidden="true"><span style={{ width: `${((idx + 1) / steps.length) * 100}%` }} /></div>
-          <span className="ss-count">{idx + 1} / {steps.length}</span>
-          <button className="ss-btn ghost" type="button" onClick={() => { setI(0); setPlaying(true); }}>↺ Replay</button>
+        <div className="ss-side">
+          <span className="ss-title">{scene.title}</span>
+          <div ref={capRef} className={`ss-cap ${tone === "bad" ? "bad" : tone === "good" ? "good" : ""}`} aria-live="polite">
+            <p style={{ fontSize: capSize }}>{!started ? "Tap Next to begin." : renderText ? renderText(step.caption) : step.caption}</p>
+          </div>
         </div>
       </div>
     );

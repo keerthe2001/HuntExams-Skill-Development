@@ -4,6 +4,7 @@ Content lives in YAML under ``content/`` and is copied into the database on firs
 After that the admin edits it; the YAML stays the reviewed, version-controlled source.
 """
 
+import hashlib
 import math
 from pathlib import Path
 from typing import Any, Literal
@@ -341,8 +342,24 @@ def check_content_tree(tree: dict[str, Any]) -> list[str]:
     return problems
 
 
-async def sync_content(session: AsyncSession, root: Path, *, overwrite: bool) -> str:
-    """Load YAML content. With ``overwrite`` existing rows are updated from the files."""
+def content_fingerprint(root: Path) -> str:
+    """A hash of every content file, so a deploy can tell whether the lessons changed."""
+    h = hashlib.sha256()
+    for f in sorted(root.rglob("*.yaml")):
+        h.update(str(f.relative_to(root)).encode())
+        h.update(f.read_bytes())
+    return h.hexdigest()
+
+
+async def sync_content(
+    session: AsyncSession, root: Path, *, overwrite: bool, prune: bool = False
+) -> str:
+    """Load YAML content. With ``overwrite`` existing rows are updated from the files.
+
+    With ``prune``, topics, levels and labs that are no longer in the files are unpublished
+    (never deleted, so learners' progress rows stay valid). Topics an admin has edited and
+    published in the admin editor (version > 1) keep their edited body.
+    """
     tree = load_content_tree(root)
     problems = check_content_tree(tree)
     if problems:
@@ -357,6 +374,22 @@ async def sync_content(session: AsyncSession, root: Path, *, overwrite: bool) ->
     path.title, path.summary = tree["title"], tree.get("summary", "")
     await session.flush()
 
+    if prune:
+        keep_topics = {t["slug"] for lv in tree["levels"] for t in lv.get("topics", [])}
+        keep_levels = {lv["number"] for lv in tree["levels"]}
+        keep_labs = {lb["slug"] for lb in tree["labs"]}
+        for old in await session.scalars(select(Topic)):
+            if old.slug not in keep_topics:
+                old.status = PublishStatus.DRAFT
+                old.number = 1000 + old.id  # out of the way of the new numbering
+        for old in await session.scalars(select(Level).where(Level.path_id == path.id)):
+            if old.number not in keep_levels:
+                old.status = PublishStatus.DRAFT
+        for old in await session.scalars(select(Lab)):
+            if old.slug not in keep_labs:
+                old.status = PublishStatus.DRAFT
+        await session.flush()
+
     topics_by_slug: dict[str, Topic] = {}
     for lv in tree["levels"]:
         level = await session.scalar(
@@ -368,6 +401,7 @@ async def sync_content(session: AsyncSession, root: Path, *, overwrite: bool) ->
         level.slug, level.title = lv["slug"], lv["title"]
         level.summary, level.hours = lv.get("summary", ""), lv.get("hours", 10)
         level.optional = bool(lv.get("optional", False))
+        level.status = PublishStatus.PUBLISHED
         await session.flush()
         for n, t in enumerate(lv.get("topics", []), start=1):
             topic = await session.scalar(select(Topic).where(Topic.slug == t["slug"]))
@@ -375,8 +409,9 @@ async def sync_content(session: AsyncSession, root: Path, *, overwrite: bool) ->
                 topic = Topic(slug=t["slug"], level_id=level.id, number=n)
                 session.add(topic)
             topic.level_id, topic.number = level.id, n
-            topic.title, topic.summary = t["title"], t.get("summary", "")
-            topic.minutes, topic.body = t.get("minutes", 8), t["body"]
+            if (topic.version or 1) <= 1:  # an admin-edited topic keeps its edits
+                topic.title, topic.summary = t["title"], t.get("summary", "")
+                topic.minutes, topic.body = t.get("minutes", 8), t["body"]
             topic.status = PublishStatus.PUBLISHED
             topics_by_slug[t["slug"]] = topic
         await session.flush()

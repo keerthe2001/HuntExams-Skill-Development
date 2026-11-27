@@ -20,7 +20,7 @@ export function nextHref(n: NextActivity): string {
   }
 }
 const NEXT_VERB = { watch: "Watch", practise: "Practise", lab: "Start lab", mission: "Open mission", diagnostic: "Take diagnostic", certificate: "Claim" } as const;
-const lvLabel = (n: number) => (n === 0 ? "Starter" : `L${n}`);
+const lvLabel = (n: number) => (n === 0 ? "Start" : `L${n}`);
 
 /* ---------------------------------------------------------------- dashboard */
 

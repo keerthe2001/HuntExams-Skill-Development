@@ -459,7 +459,7 @@ def plan_for(levels: list[Level], skill: str | None, budget: str | None) -> dict
         starter = next((lv for lv in levels if lv.optional), None)
         if starter:
             hours += starter.hours
-            start_label = f"Starter · {starter.title}"
+            start_label = starter.title
     if skill == "advanced":
         hours -= sum(lv.hours for lv in levels if lv.number in (1, 2))
         start_label = "15-minute diagnostics for Levels 1 and 2"

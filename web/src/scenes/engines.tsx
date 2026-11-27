@@ -4,14 +4,16 @@ import { Icon } from "@/components/Icon";
 import type { Scene, SceneStep } from "@/lib/types";
 import { highlight } from "@/lib/util";
 
-export type EngineProps = { scene: Scene; step: SceneStep; index: number; steps: SceneStep[]; sw: Record<string, boolean>; reduce: boolean };
+export type EngineProps = { scene: Scene; step: SceneStep; index: number; steps: SceneStep[]; sw: Record<string, boolean>; reduce: boolean;
+  /** Build up: show a component only once a step has used it (lesson player). */
+  reveal?: boolean };
 
 const color = (c: unknown, fallback = "var(--l4)") => (typeof c === "string" ? (c.startsWith("l") || c === "brand" || c === "acc" || c === "bad" ? `var(--${c})` : c) : fallback);
 
 /* ------------------------------------------------------------------ flow */
 type Actor = { id: string; label: string; icon: string; x: number; y: number };
 
-function FlowStage({ scene, step, steps, index, sw, reduce }: EngineProps) {
+function FlowStage({ scene, step, steps, index, sw, reduce, reveal }: EngineProps) {
   const actors = (scene.actors as Actor[]) ?? [];
   const byId = Object.fromEntries(actors.map((a) => [a.id, a]));
   const notes: Record<string, string> = {};
@@ -20,6 +22,13 @@ function FlowStage({ scene, step, steps, index, sw, reduce }: EngineProps) {
   const active = new Set([...(step.active as string[] | undefined ?? []), step.from as string, step.to as string, step.think as string].filter(Boolean));
   const from = byId[step.from as string];
   const to = byId[step.to as string];
+  // Components appear one by one: an actor shows once any step so far has involved it.
+  const shown = new Set<string>();
+  steps.slice(0, index + 1).forEach((s) => {
+    for (const k of ["from", "to", "think"]) if (typeof s[k] === "string") shown.add(s[k] as string);
+    for (const a of (s.active as string[] | undefined) ?? []) shown.add(a);
+    for (const a of Object.keys((s.notes as Record<string, string>) ?? {})) shown.add(a);
+  });
   const [pos, setPos] = useState<{ x: number; y: number; go: boolean } | null>(null);
   const clampX = (x: number) => Math.min(78, Math.max(22, x));
 
@@ -35,7 +44,7 @@ function FlowStage({ scene, step, steps, index, sw, reduce }: EngineProps) {
   return (
     <div className="stage flow">
       {actors.map((a) => (
-        <div key={a.id} className={`actor ${active.has(a.id) ? "on" : ""} ${step.think === a.id ? "think" : ""} ${offActors.has(a.id) ? "off" : ""}`}
+        <div key={a.id} className={`actor ${active.has(a.id) ? "on" : ""} ${step.think === a.id ? "think" : ""} ${offActors.has(a.id) ? "off" : ""} ${reveal && !shown.has(a.id) ? "unseen" : ""}`}
           style={{ left: `${a.x}%`, top: `${a.y}%` }}>
           <div className="box"><Icon name={a.icon} /></div>
           <span className="nm">{a.label}</span>
@@ -43,7 +52,9 @@ function FlowStage({ scene, step, steps, index, sw, reduce }: EngineProps) {
         </div>
       ))}
       {pos && (
-        <div className={`packet ${(step.tone as string) ?? "ask"} ${pos.go ? "go" : ""}`} style={{ left: `${pos.x}%`, top: `${pos.y}%` }}>
+        <div className={`packet ${(step.tone as string) ?? "ask"} ${pos.go ? "go" : ""}`}
+          // In the lesson player the packet sits fully above the box it lands on (see .ss-native .packet).
+          style={{ left: `${pos.x}%`, top: reveal ? `calc(${pos.y + 23}% - var(--box, 64px) / 2 - 8px)` : `${pos.y}%` }}>
           {String(step.packet ?? "")}
         </div>
       )}
@@ -361,20 +372,22 @@ function MeterStage({ scene, step, reduce }: EngineProps) {
 }
 
 /* ------------------------------------------------------------------ code */
-function CodeStage({ scene, step, index, steps }: EngineProps) {
+function CodeStage({ scene, step, index, steps, reveal }: EngineProps) {
   const lines = String(scene.source ?? "").replace(/\n$/, "").split("\n");
   const vars = (step.vars as Record<string, string>) ?? {};
   const changed = new Set((step.changed as string[]) ?? []);
   const out = String(step.out ?? "");
   const prevOut = index > 0 ? String(steps[index - 1]!.out ?? "") : "";
   const fresh = out.startsWith(prevOut) ? out.slice(prevOut.length) : "";
+  // Build up: lines appear as the walk-through reaches them.
+  const reached = Math.max(0, ...steps.slice(0, index + 1).map((s) => Number(s.line) || 0));
   return (
     <div className="stage free" style={{ alignContent: "start" }}>
       <div className="viz-grid">
         <div className="codebox">
           <div className="code-lines">
             {lines.map((l, k) => (
-              <div key={k} className={`cl ${step.line === k + 1 ? (step.tone === "bad" ? "errl" : "sel") : ""}`}>
+              <div key={k} className={`cl ${step.line === k + 1 ? (step.tone === "bad" ? "errl" : "sel") : ""} ${reveal && k + 1 > reached ? "unseen" : ""}`}>
                 <span className="n">{k + 1}</span><span>{highlight(l)}</span>
               </div>
             ))}

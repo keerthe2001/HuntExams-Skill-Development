@@ -509,3 +509,12 @@ class LinkRollupState(Base):
         ForeignKey("link_creators.id", ondelete="CASCADE"), primary_key=True
     )
     last_day: Mapped[date] = mapped_column(Date)
+
+
+class AppMeta(Base):
+    """Small key/value facts about this installation (e.g. which content version is loaded)."""
+
+    __tablename__ = "app_meta"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")

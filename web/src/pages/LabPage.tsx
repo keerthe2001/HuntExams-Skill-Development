@@ -171,7 +171,7 @@ export function LabPage() {
       </div>
       <div className="lab-body">
         <section className="lab-guide" aria-label="Instructions">
-          <span className="label">Step {i + 1} of {steps.length}{lab.level ? ` · ${lab.level.number === 0 ? "Starter" : `Level ${lab.level.number}`}` : ""}</span>
+          <span className="label">Step {i + 1} of {steps.length}{lab.level ? ` · ${lab.level.number === 0 ? "Start here" : `Level ${lab.level.number}`}` : ""}</span>
           {i === 0 && <p className="muted small">{lab.body.intro}</p>}
           <p className="lab-say"><Md text={step.say} /></p>
           <div className="row">

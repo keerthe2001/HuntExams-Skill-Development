@@ -54,8 +54,8 @@ ok(Object.keys(key).length >= 100, `admin can read ${Object.keys(key).length} to
 
 /* ------------------------------------------------------------ public pages, desktop + phone */
 step("Public pages render without errors or sideways scrolling");
-const publicRoutes = ["/", "/learn", "/glossary", "/glossary/token", "/world/llm-foundations", "/ta/learn/what-is-a-program", "/learn/what-is-a-program?step=build", "/learn/context-windows?step=try", "/roadmap", "/pricing", "/guides", "/guides/rag-explained-for-beginners", "/verify", "/login", "/signup",
-  "/about", "/privacy", "/terms", "/learn/what-is-a-program", "/learn/rag-architecture", "/learn/conditional-routing", "/learn/caching-scalability",
+const publicRoutes = ["/", "/learn", "/glossary", "/glossary/token", "/world/llm-foundations", "/ta/learn/what-is-an-ai-agent", "/learn/tokens-and-tokenization?step=build", "/learn/context-windows?step=try", "/roadmap", "/pricing", "/guides", "/guides/rag-explained-for-beginners", "/verify", "/login", "/signup",
+  "/about", "/privacy", "/terms", "/learn/what-is-an-ai-agent", "/learn/rag-architecture", "/learn/conditional-routing", "/learn/caching-scalability",
   "/learn/similarity-search", "/learn/chunk-size-overlap", "/learn/inference-parameters", "/learn/capstone-api", "/lab/lab-chunking", "/nope-404"];
 for (const [label, ctxOpts] of [["desktop", { viewport: { width: 1360, height: 900 } }], ["phone", devices["iPhone 13"]]]) {
   const ctx = await browser.newContext(ctxOpts);
@@ -80,9 +80,9 @@ await page.click("text=Continue");
 await page.click("text=Beginner"); await page.click("text=Continue");
 await page.click("text=1 hour a day"); await page.click("text=Continue");
 await page.waitForSelector("text=Here's your route");
-ok(await page.waitForSelector("text=Starter · Python in plain words", { timeout: 10000 }).then(() => true, () => false), "beginners start with the starter pack");
+ok(await page.waitForSelector("text=Start here", { timeout: 10000 }).then(() => true, () => false), "beginners start with Start here");
 await page.click("text=Start learning"); await page.waitForURL(`${BASE}/`);
-ok(await page.waitForSelector(".p-side >> text=Python in plain words", { timeout: 10000 }).then(() => true, () => false), "home opens the lesson player with the course list");
+ok(await page.waitForSelector(".p-side >> text=What is an AI agent?", { timeout: 10000 }).then(() => true, () => false), "home opens the lesson player with the course list");
 await shot(page, "roadmap");
 
 step("Lesson: scene to the end marks it watched; every question type through the UI");
@@ -93,8 +93,14 @@ async function cardFor(slug, qid) {
     await page.goto(`${BASE}/learn/${slug}?step=${st}`);
     await page.waitForSelector(".p-steps");
     await page.waitForTimeout(400);
-    const card = page.locator(`.q[data-qid="${qid}"]`);
-    if (await card.count()) return card;
+    // Questions show one at a time: step through them with the dots.
+    const dots = page.locator(".p-qnav .p-carddots button");
+    const n = Math.max(1, await dots.count());
+    for (let k = 0; k < n; k++) {
+      if (await dots.count()) { await dots.nth(k).click(); await page.waitForTimeout(150); }
+      const card = page.locator(`.q[data-qid="${qid}"]`);
+      if (await card.count()) return card;
+    }
   }
   throw new Error(`question ${qid} not found in ${slug}`);
 }
@@ -124,30 +130,30 @@ async function answerAll(slug) {
         while (at > target) { await card.locator(".ord > div").nth(at).locator("button").first().click(); at--; }
       }
     }
-    await card.locator("button", { hasText: "Check" }).click();
+    await card.locator("button.btn-primary", { hasText: "Check" }).click();
     await card.locator(".fb").waitFor();
     const txt = await card.locator(".fb").textContent();
     ok(/Correct/.test(txt ?? ""), `${slug}/${q.id} (${q.type}) answered correctly in the UI`);
   }
 }
-await answerAll("what-is-a-program");
-const practised = await (await page.request.get(`${BASE}/api/topics/what-is-a-program`)).json();
+await answerAll("what-is-an-ai-agent");
+const practised = await (await page.request.get(`${BASE}/api/topics/what-is-an-ai-agent`)).json();
 ok(practised.progress?.status === "practised", "topic marked practised after scene + all checks");
 await shot(page, "lesson-practised");
 
 step("Wrong answer shows a hint, not XP");
-const q0 = key["variables"].checks.find((q) => q.type === "mcq" || q.type === "predict");
-const wrongCard = await cardFor("variables", q0.id);
+const q0 = key["what-is-an-ai-agent"].checks.find((q) => q.type === "mcq" || q.type === "predict");
+const wrongCard = await cardFor("what-is-an-ai-agent", q0.id);
 await wrongCard.locator(".opt").nth((q0.answer + 1) % q0.options.length).click();
-await wrongCard.locator("button", { hasText: "Check" }).click();
+await wrongCard.locator("button.btn-primary", { hasText: "Check" }).click();
 await wrongCard.locator(".fb").waitFor();
 ok(/Not yet/.test(await wrongCard.locator(".fb").textContent() ?? ""), "wrong answer gets 'Not yet' feedback");
 
 step("Run the worked example in the Python sandbox and watch each line");
-await page.goto(`${BASE}/learn/variables?step=build`); await page.waitForSelector(".b-code");
+await page.goto(`${BASE}/learn/tokens-and-tokenization?step=build`); await page.waitForSelector(".b-code");
 await page.click("text=▶ Run and watch");
 await page.waitForSelector(".b-says", { timeout: 90000 });
-ok(/Creates price = 120|price/.test(await page.locator(".b-says").textContent() ?? ""), "visualizer narrates the executed line");
+ok(/Line \d/.test(await page.locator(".b-says").textContent() ?? ""), "visualizer narrates the executed line");
 
 step("Code exercise: fail, reveal solution, pass");
 await page.click("text=2 · Your turn");
@@ -160,7 +166,7 @@ await page.waitForSelector("text=All checks passed", { timeout: 30000 });
 ok(true, "exercise passes with the solution");
 
 step("Guided lab, full screen, every step with Show me + Check");
-await page.goto(`${BASE}/lab/lab-variables`); await page.waitForSelector(".lab-say");
+await page.goto(`${BASE}/lab/lab-tokenizer`); await page.waitForSelector(".lab-say");
 const labSteps = await page.locator(".lab-steps li").count();
 for (let k = 0; k < labSteps; k++) {
   if (await page.locator("text=Show me").isVisible()) { await page.click("text=Show me"); await page.waitForTimeout(400); while (await page.isVisible("text=Typing…")) await page.waitForTimeout(200); }
@@ -246,7 +252,7 @@ await pp.goto(`${BASE}/learn/rag-architecture?step=build`); await pp.waitForSele
 ok(await pp.isVisible("text=▶ Run and watch"), "phone: Build step shows the runnable example");
 await pp.goto(`${BASE}/learn/rag-architecture?step=quiz`); await pp.waitForSelector(".q");
 ok(await pp.isVisible(".q"), "phone: Quiz step shows questions");
-await pp.goto(`${BASE}/learn/what-is-a-program?step=build`); await pp.click("text=2 · Your turn"); await pp.waitForSelector(".w-blocks");
+await pp.goto(`${BASE}/learn/tokens-and-tokenization?step=build`); await pp.click("text=2 · Your turn"); await pp.waitForSelector(".w-blocks");
 await pp.waitForTimeout(800); // let web fonts swap in before tapping
 for (let h = 0; h < 20 && await pp.locator(".w-pool .w-line").count(); h++) {
   await pp.locator("text=Hint").evaluate((el) => el.scrollIntoView({ block: "center" }));

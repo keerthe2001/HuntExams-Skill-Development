@@ -33,12 +33,12 @@ async def web(app, tmp_path: Path):  # type: ignore[no-untyped-def]
 
 
 async def test_topic_page_has_full_text_and_meta(web) -> None:  # type: ignore[no-untyped-def]
-    r = await web.get("/learn/variables")
+    r = await web.get("/learn/what-is-an-ai-agent")
     assert r.status_code == 200
     html = r.text
     assert html.count("<title>") == 1 and "explained simply" in html
     assert 'content="default"' not in html  # replaced by this page's description
-    assert '<link rel="canonical" href="http://localhost:5174/learn/variables" />' in html
+    assert '<link rel="canonical" href="http://localhost:5174/learn/what-is-an-ai-agent" />' in html
     assert 'hreflang="en"' in html and 'hreflang="x-default"' in html
     assert '"@type": "LearningResource"' in html and '"BreadcrumbList"' in html
     # The text sits inside #root, so the app replaces it and people see it in the Read panel.
@@ -52,7 +52,7 @@ async def test_home_redirects_glossary_and_404(web) -> None:  # type: ignore[no-
     home = await web.get("/")
     assert home.status_code == 200
     assert "Learn agentic AI by watching it move" in home.text
-    assert 'href="/learn/variables"' in home.text
+    assert 'href="/learn/what-is-an-ai-agent"' in home.text
     assert 'window.__HX__={"/curriculum"' in home.text  # the player renders without a request
     r = await web.get("/learn")
     assert r.status_code == 301 and r.headers["location"] == "/"
@@ -75,18 +75,18 @@ async def test_home_redirects_glossary_and_404(web) -> None:  # type: ignore[no-
 
 async def test_tamil_and_hindi_fall_back_to_english_without_duplicates(web) -> None:  # type: ignore[no-untyped-def]
     for lang in ("ta", "hi"):
-        r = await web.get(f"/{lang}/learn/variables")
+        r = await web.get(f"/{lang}/learn/what-is-an-ai-agent")
         assert r.status_code == 200
         assert '<meta name="robots" content="noindex, follow" />' in r.text
         # Canonical points to the English page until a translation is published.
-        assert 'rel="canonical" href="http://localhost:5174/learn/variables"' in r.text
+        assert 'rel="canonical" href="http://localhost:5174/learn/what-is-an-ai-agent"' in r.text
         assert f'href="/{lang}/glossary/' in r.text  # links stay in that language
         assert (await web.get(f"/{lang}")).status_code == 200
 
 
 async def test_sitemap_lists_only_indexable_pages(web) -> None:  # type: ignore[no-untyped-def]
     xml = (await web.get("/sitemap.xml")).text
-    assert "<loc>http://localhost:5174/learn/variables</loc>" in xml
+    assert "<loc>http://localhost:5174/learn/what-is-an-ai-agent</loc>" in xml
     assert "/glossary/" in xml and "/guides/" in xml
     assert "/world/" not in xml and "/login" not in xml and "/dashboard" not in xml
 
@@ -103,7 +103,7 @@ async def test_guides_and_static_pages_are_server_rendered(web) -> None:  # type
 
 
 async def test_private_pages_noindex_unknown_404_old_pages_gone(web) -> None:  # type: ignore[no-untyped-def]
-    for path in ("/login", "/signup", "/dashboard", "/admin", "/lab/lab-variables", "/verify"):
+    for path in ("/login", "/signup", "/dashboard", "/admin", "/lab/lab-tokenizer", "/verify"):
         r = await web.get(path)
         assert r.status_code == 200 and r.headers.get("x-robots-tag") == "noindex", path
     r = await web.get("/this-page-does-not-exist")

@@ -1,0 +1,78 @@
+number: 0
+slug: start
+title: Start here
+summary: The whole idea in one topic. What an AI agent is, and why it needs tools and memory.
+hours: 1
+optional: true
+topics:
+
+- slug: what-is-an-ai-agent
+  title: What is an AI agent?
+  summary: An AI agent is a language model that can decide to use tools and remember results, so it can act on a goal instead of only chatting.
+  minutes: 6
+  body:
+    objectives:
+      - Say what an AI agent is in one sentence
+      - Explain why an agent needs tools and memory
+      - Tell an agent apart from a plain chatbot
+    intro: >-
+      A chatbot only talks: it answers from what it remembers. An AI agent is given a goal and can
+      also act: it thinks about what it needs, uses tools to get real facts or do real things, and
+      remembers what it found. That is what you will learn to build.
+    intro_eng: >-
+      An agent is a loop around a language model: the model reads the goal and the history,
+      chooses an action (a tool call with arguments) or a final answer, the program runs the tool
+      and appends the result to the context, and the loop repeats until the model answers or a
+      step limit is reached. Memory is state kept across turns or sessions.
+    scenes:
+      - engine: flow
+        title: How does an AI agent work?
+        track: [Goal, Think, Tool, Memory, Answer]
+        actors:
+          - {id: you, label: You, icon: person, x: 14, y: 50}
+          - {id: agent, label: Agent, icon: brain, x: 47, y: 50}
+          - {id: tools, label: Tools, icon: wrench, x: 84, y: 24}
+          - {id: mem, label: Memory, icon: db, x: 84, y: 76}
+        switches:
+          - {id: tool, label: Tools, label_on: "ON · the agent can look things up", label_off: "OFF · it can only guess", track: 2, actor: tools}
+          - {id: mem, label: Memory, label_on: "ON · it remembers results", label_off: "OFF · it forgets everything", track: 3, actor: mem}
+        steps:
+          - {at: 0, from: you, to: agent, packet: "Umbrella today?", tone: ask, caption: "You give the agent a goal: \"Should I take an umbrella in Chennai today?\""}
+          - {at: 1, think: agent, notes: {agent: "need: today's weather"}, caption: "The agent thinks first. It can't know today's weather from memory, so it needs to check."}
+          - {at: 2, when: tool, from: agent, to: tools, packet: "get_weather(Chennai)", tone: ask, caption: "It picks a tool and calls it with the right input."}
+          - {at: 2, when: tool, from: tools, to: agent, packet: "rain 80%", tone: good, notes: {tools: "returned: rain 80%"}, caption: "The tool sends back a real fact: an 80% chance of rain."}
+          - {at: 2, when: "!tool", active: [agent], tone: bad, notes: {tools: "switched off"}, caption: "No tools. The agent has no way to check, so it can only guess."}
+          - {at: 3, when: mem, from: agent, to: mem, packet: "save: rain 80%", tone: ask, notes: {mem: "Chennai · rain 80%"}, caption: "It saves what it learned, so a follow-up question doesn't need another lookup."}
+          - {at: 3, when: "!mem", active: [agent], tone: bad, notes: {mem: "empty"}, caption: "Memory is off. Ask \"what about tomorrow?\" and it starts from zero."}
+          - {at: 4, when: tool, from: agent, to: you, packet: "Yes, take one ☂", tone: good, caption: "The answer is based on a fact, not a guess: \"Yes, there's an 80% chance of rain.\""}
+          - {at: 4, when: "!tool", from: agent, to: you, packet: "Maybe? Not sure", tone: bad, caption: "Without tools the answer is a guess. Agents need tools to act on the real world."}
+    points:
+      - {title: It starts with a goal, text: "You tell the agent what you want, not every step to take.", step: 0}
+      - {title: It thinks before it acts, text: "The model decides what it is missing and what to do next.", eng: "The model emits either a tool call (name + JSON arguments) or a final answer.", step: 1}
+      - {title: Tools reach the real world, text: "Tools let it look things up or do things: search, weather, email, a database.", eng: "The program executes the tool and appends the result to the context as a tool message.", step: 2}
+      - {title: Memory keeps what it learned, text: "Saved results mean it doesn't repeat work or forget the conversation.", eng: "Short-term memory is the message history; long-term memory is stored state, often a database.", step: 3}
+      - {title: The answer uses real facts, text: "Because it checked, the answer is grounded instead of guessed.", step: 4}
+    words:
+      - [AI agent, "A language model that can use tools and memory to reach a goal."]
+      - [Goal, What you want the agent to achieve.]
+      - [Tool, A function the model is allowed to ask for.]
+      - [Memory, What the agent keeps from earlier steps or conversations.]
+      - [LLM, "Large language model: a model trained to predict text."]
+    checks:
+      - id: agent-vs-chatbot
+        type: mcq
+        prompt: "What makes an AI agent different from a plain chatbot?"
+        options: ["It types faster", "It can use tools and remember results to reach a goal", "It never makes mistakes"]
+        answer: 1
+        explain: "A chatbot only answers from memory. An agent can act: call tools, save results, then answer."
+      - id: no-tools
+        type: predict
+        prompt: "You switch the agent's tools off and ask about today's weather. What happens?"
+        options: ["It still checks the weather", "It can only guess", "It refuses to answer forever"]
+        answer: 1
+        explain: "Without tools there is no way to get today's fact, so the answer is a guess."
+      - id: agent-order
+        type: order
+        prompt: "Put what the agent does in order."
+        items: ["Read the goal", "Think about what's missing", "Call a tool", "Save the result", "Answer"]
+        explain: "Goal, think, act with a tool, remember, answer. Later you'll write this loop in Python."

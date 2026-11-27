@@ -20,8 +20,9 @@ from app import (
     seo,
 )
 from app.config import Settings, get_settings
-from app.content import sync_content
+from app.content import content_fingerprint, sync_content
 from app.core import Database, RateLimiter
+from app.models import AppMeta
 
 logger = logging.getLogger("huntexams")
 MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
@@ -39,7 +40,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             root = Path(settings.content_dir)
             if root.is_dir():  # noqa: ASYNC240 - one stat call at startup
                 async with app.state.db.sessionmaker() as session:
-                    logger.info("content: %s", await sync_content(session, root, overwrite=False))
+                    # Lessons live in the repository: when a deploy changes them, apply the
+                    # change (unpublishing removed topics, keeping admin edits).
+                    stamp = content_fingerprint(root)
+                    meta = await session.get(AppMeta, "content_version")
+                    if meta is None or meta.value != stamp:
+                        result = await sync_content(session, root, overwrite=True, prune=True)
+                        meta = await session.get(AppMeta, "content_version")
+                        if meta is None:
+                            session.add(AppMeta(key="content_version", value=stamp))
+                        else:
+                            meta.value = stamp
+                        await session.commit()
+                        logger.info("content: %s", result)
         try:
             async with app.state.db.sessionmaker() as session:
                 await links.owner_creator(session, settings)
