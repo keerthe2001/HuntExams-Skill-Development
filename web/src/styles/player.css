@@ -348,19 +348,16 @@ html.in-player, html.in-player body { height: 100%; overflow: hidden; }
 .p-btn.primary { border: 0; background: var(--brand); color: var(--brand-on); }
 .p-btn.primary:hover { background: color-mix(in srgb, var(--brand) 88%, var(--fg)); }
 
-.p-read-btn { display: none; align-items: center; min-height: 36px; padding: 0 14px; margin-left: auto; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--fg); font-weight: 600; font-size: 14px; cursor: pointer; }
-.p-text.folded:not(.open) .p-cards, .p-text.folded:not(.open) .p-cardnav { display: none; }
-.p-text.folded .p-read-btn { display: inline-flex; }
-/* Short screens (laptops at 600-720px tall): the cards fold on every step, so the visual keeps its
-   room; the caption beside the visual already explains each step, and Read opens the cards. */
-@media (max-height: 720px) and (min-width: 701px) {
-  .p-text:not(.open) .p-cards, .p-text:not(.open) .p-cardnav { display: none; }
-  .p-text .p-read-btn { display: inline-flex; }
-  .p-title h1 { font-size: 24px; }
-  .p-mid { padding-top: 10px; padding-bottom: 10px; }
-}
-.p-text.folded.open { position: relative; }
-.p-text { flex: none; overflow: hidden; border-radius: var(--r-lg); background: var(--card); border: 1px solid var(--line); padding: 10px 16px 10px; display: flex; flex-direction: column; gap: 6px; }
+/* Notes: not a strip under the visual. "Read notes" in the header opens them over the bottom of the
+   lesson; the caption beside the visual explains each step meanwhile. */
+.p-mid { position: relative; }
+.p-readtop { display: inline-flex; align-items: center; min-height: 42px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--card); color: var(--fg); font-weight: 600; font-size: 14px; cursor: pointer; white-space: nowrap; }
+.p-readtop[aria-expanded="true"] { border-color: var(--brand); color: var(--brand); }
+.p-text { display: none; position: absolute; z-index: 25; left: 22px; right: 22px; bottom: 14px; max-height: min(70%, 520px); overflow: hidden; border-radius: var(--r-lg); background: var(--card); border: 1px solid var(--line-2); box-shadow: 0 24px 60px rgb(0 0 0 / .22); padding: 14px 18px 16px; flex-direction: column; gap: 6px; }
+.p-text.open { display: flex; animation: p-sheet .3s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes p-sheet { from { opacity: 0; transform: translateY(24px); } }
+.p-text-scrim { position: absolute; inset: 0; z-index: 24; border: 0; padding: 0; background: rgb(0 0 0 / .18); cursor: default; }
+.p-read-close { order: 10; width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line-2); background: transparent; color: var(--fg); font-size: 16px; cursor: pointer; flex: none; }
 /* Explanation cards: one visible at a time, sliding; the stack is as tall as its tallest card. */
 .p-cardset { display: grid; gap: 6px; touch-action: pan-y; }
 .p-cards { display: grid; overflow: hidden; }
@@ -483,10 +480,10 @@ html.in-player, html.in-player body { height: 100%; overflow: hidden; }
   .p-step.cur { padding-right: 12px; }
   .p-step.cur span { display: inline; }
   .p-steps li:not(:last-child)::after { width: 8px; }
-  .p-text { padding: 8px 10px; }
-  .p-text:not(.open) .p-cards, .p-text:not(.open) .p-cardnav { display: none; }
   .p-tcard { font-size: 15px; }
-  .p-read-btn { display: inline-flex; align-items: center; min-height: 36px; padding: 0 12px; margin-left: auto; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--fg); font-weight: 600; font-size: 14px; cursor: pointer; }
+  .p-text { position: fixed; left: 8px; right: 8px; bottom: calc(76px + env(safe-area-inset-bottom)); max-height: 70dvh; overflow-y: auto; }
+  .p-text-scrim { position: fixed; }
+  .p-readtop { min-height: 36px; padding: 0 12px; }
   .p-toggle button { min-height: 34px; padding: 0 11px; font-size: 13px; }
   .p-nav .p-btn, .p-back, .p-go { display: none; }
   .p-ctl { display: flex; align-items: center; gap: 10px; order: 10; margin: 0 -12px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--bg-2); }

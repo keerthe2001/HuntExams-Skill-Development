@@ -489,6 +489,7 @@ export function Player({ home = false }: { home?: boolean }) {
           <h1>{t.title}</h1>
         </div>
         <div className="p-nav">
+          <button type="button" className="p-readtop" aria-expanded={readOpen} onClick={() => setReadOpen((o) => !o)} title="The full explanation, in Simple English or Technical">Read notes</button>
           {t.lab && <Link className="p-lab" to={`/lab/${t.lab.slug}`} title="A hands-on project, step by step"><span aria-hidden="true">⚗</span> Guided lab</Link>}
         <ol className="p-steps" aria-label="Steps">
           {plan.steps.map((s, k) => (
@@ -521,14 +522,15 @@ export function Player({ home = false }: { home?: boolean }) {
         {stepNext}
       </div>
 
-      <section className={`p-text ${readOpen ? "open" : ""} ${step === "see" ? "" : "folded"}`} aria-label="Explanation">
+      {readOpen && <button type="button" className="p-text-scrim" aria-label="Close the notes" onClick={() => setReadOpen(false)} />}
+      <section className={`p-text ${readOpen ? "open" : ""}`} aria-label="Explanation" aria-hidden={!readOpen} onKeyDown={(e) => { if (e.key === "Escape") setReadOpen(false); }}>
         <TextCards key={`${t.slug}-${mode}`} follow={step === "see" && sceneIdx === 0 ? sceneAt : null}
           head={<>
             <div className="p-toggle" role="group" aria-label="Explanation style">
               <button type="button" aria-pressed={mode === "simple"} onClick={() => setMode("simple")}>Simple English</button>
               <button type="button" aria-pressed={mode === "eng"} onClick={() => setMode("eng")}>Technical</button>
             </div>
-            <button type="button" className="p-read-btn" aria-expanded={readOpen} onClick={() => setReadOpen((o) => !o)}>{readOpen ? "Hide ▾" : "Read ▴"}</button>
+            <button type="button" className="p-read-close" onClick={() => setReadOpen(false)} aria-label="Close the notes">✕</button>
           </>}
           cards={[
           ...(mode === "simple"
