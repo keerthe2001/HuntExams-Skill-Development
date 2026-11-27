@@ -45,6 +45,9 @@ type Actor = { id: string; label: string; x: number; y: number };
 function FlowArea({ scene, children }: { scene: Scene; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState(64);
+  // Vertical layout: an actor at y (0-100) sits at fy0 + y * fys pixels, so the diagram can use the
+  // full height of the stage instead of its fixed percentages.
+  const [fy, setFy] = useState<{ y0: number; s: number } | null>(null);
   const isCode = scene.engine === "code";
   useEffect(() => {
     const el = ref.current;
@@ -54,18 +57,44 @@ function FlowArea({ scene, children }: { scene: Scene; children: ReactNode }) {
       const W = el.clientWidth, H = el.clientHeight;
       if (!W || !H) return;
       let best = 40;
+      let bestFy: { y0: number; s: number } | null = null;
       const cl = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+      const ys = actors.map((a) => a.y);
+      // What each component really needs: its longest note, and whether a packet ever lands on it.
+      const stepsAll = (scene.steps ?? []) as Record<string, unknown>[];
+      const noteLen: Record<string, number> = {};
+      const gets = new Set<string>();
+      for (const st of stepsAll) {
+        for (const [k, v] of Object.entries((st.notes as Record<string, string>) ?? {})) noteLen[k] = Math.max(noteLen[k] ?? 0, String(v).length);
+        if (st.to && st.packet) gets.add(String(st.to));
+      }
+      const ymin = Math.min(...ys), ymax = Math.max(...ys), range = ymax - ymin;
       for (let b = 200; b >= 40; b -= 4) {
         // Each component is anchored at its box centre. Above the box: room for the packet that
         // lands on it. Below: its name and up to three lines of note. Sizes match player.css.
-        const above = b / 2 + 2.05 * cl(b * 0.18, 12, 17) + 4 + 8;
-        const below = b / 2 + b * 0.14 + 1.2 * cl(b * 0.2, 13, 21) + 3 * 1.25 * cl(b * 0.16, 12, 16) + 6;
+        const fNt = cl(b * 0.16, 12, 16), fNm = cl(b * 0.2, 13, 21);
+        const lines = (id: string) => {
+          const len = noteLen[id] ?? 0;
+          if (!len) return 0;
+          const wide = Math.min(22, Math.max(b * 2.1, 120) / (0.6 * fNt));
+          return Math.min(3, Math.ceil(len / wide));
+        };
+        const aboveOf = (id: string) => b / 2 + (gets.has(id) ? 2.05 * cl(b * 0.18, 12, 17) + 12 : 4);
+        const belowOf = (id: string) => b / 2 + b * 0.14 + 1.2 * fNm + lines(id) * 1.25 * fNt + 6;
+        const above = Math.max(...actors.map((a) => aboveOf(a.id)));
+        const below = Math.max(...actors.map((a) => belowOf(a.id)));
+        if (H - above - below < 0) continue;
+        // Spread the rows over the free height (never more than the original spacing).
+        const sc = range > 0 ? Math.min(H / 100, (H - above - below) / range) : H / 100;
+        const y0 = range > 0 ? (H - range * sc) / 2 + (above - below) / 2 - ymin * sc : above + (H - above - below) / 2 - ymin * sc;
         const bw = Math.min(Math.max(b * 2.1, 120), W * 0.3) + 16;
         const ok = actors.every((a, i) => actors.every((c, j) => j <= i
-          || Math.abs(a.x - c.x) / 100 * W >= bw || Math.abs(a.y - c.y) / 100 * H >= above + below))
-          && actors.every((a) => (a.y / 100) * H >= above && ((100 - a.y) / 100) * H >= below);
-        if (ok) { best = b; break; }
+          || Math.abs(a.x - c.x) / 100 * W >= bw
+          || (a.y < c.y ? belowOf(a.id) + aboveOf(c.id) : belowOf(c.id) + aboveOf(a.id)) <= Math.abs(a.y - c.y) * sc))
+          && actors.every((a) => y0 + a.y * sc >= aboveOf(a.id) - 1 && H - (y0 + a.y * sc) >= belowOf(a.id) - 1);
+        if (ok) { best = b; bestFy = { y0, s: sc }; break; }
       }
+      setFy(bestFy);
       setBox(best);
     };
     const ro = new ResizeObserver(fit);
@@ -75,7 +104,7 @@ function FlowArea({ scene, children }: { scene: Scene; children: ReactNode }) {
   }, [scene, isCode]);
   const n = String(scene.source ?? "").replace(/\n$/, "").split("\n").length;
   return (
-    <div ref={ref} className={`ss-native ${scene.engine}`} style={{ ["--n" as string]: n, ["--box" as string]: `${box}px` }}>
+    <div ref={ref} className={`ss-native ${scene.engine}`} style={{ ["--n" as string]: n, ["--box" as string]: `${box}px`, ...(fy ? { ["--fy0" as string]: `${fy.y0}px`, ["--fys" as string]: `${fy.s}px` } : {}) }}>
       {children}
     </div>
   );

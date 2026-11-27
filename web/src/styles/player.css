@@ -276,7 +276,7 @@ html.in-player, html.in-player body { height: 100%; overflow: hidden; }
 /* Small labels inside the visuals stay readable at stage scale. */
 .ss-vis .cell, .ss-vis .xchip, .ss-vis .sl-cards span, .ss-vis .mchips, .ss-vis .eng-note, .ss-vis .gstate, .ss-vis .chip { font-size: 15px; }
 .ss-vis .chip small, .ss-vis .var .t { font-size: 13px; }
-.ss-vis .space-svg text { font-size: 20px; }
+.ss-vis .space-svg text { font-size: 23px; }
 .ss-vis .eng, .ss-vis .legend span { font-size: 14px; }
 .ss-vis .mlog, .ss-vis .sl-text .d, .ss-vis .space-legend span { font-size: 15px; }
 .ss-ctl { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; }
@@ -351,6 +351,14 @@ html.in-player, html.in-player body { height: 100%; overflow: hidden; }
 .p-read-btn { display: none; align-items: center; min-height: 36px; padding: 0 14px; margin-left: auto; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--fg); font-weight: 600; font-size: 14px; cursor: pointer; }
 .p-text.folded:not(.open) .p-cards, .p-text.folded:not(.open) .p-cardnav { display: none; }
 .p-text.folded .p-read-btn { display: inline-flex; }
+/* Short screens (laptops at 600-720px tall): the cards fold on every step, so the visual keeps its
+   room; the caption beside the visual already explains each step, and Read opens the cards. */
+@media (max-height: 720px) and (min-width: 701px) {
+  .p-text:not(.open) .p-cards, .p-text:not(.open) .p-cardnav { display: none; }
+  .p-text .p-read-btn { display: inline-flex; }
+  .p-title h1 { font-size: 24px; }
+  .p-mid { padding-top: 10px; padding-bottom: 10px; }
+}
 .p-text.folded.open { position: relative; }
 .p-text { flex: none; overflow: hidden; border-radius: var(--r-lg); background: var(--card); border: 1px solid var(--line); padding: 10px 16px 10px; display: flex; flex-direction: column; gap: 6px; }
 /* Explanation cards: one visible at a time, sliding; the stack is as tall as its tallest card. */

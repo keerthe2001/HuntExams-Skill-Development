@@ -45,7 +45,7 @@ function FlowStage({ scene, step, steps, index, sw, reduce, reveal }: EngineProp
     <div className="stage flow">
       {actors.map((a) => (
         <div key={a.id} className={`actor ${active.has(a.id) ? "on" : ""} ${step.think === a.id ? "think" : ""} ${offActors.has(a.id) ? "off" : ""} ${reveal && !shown.has(a.id) ? "unseen" : ""}`}
-          style={{ left: `${a.x}%`, top: `${a.y}%` }}>
+          style={{ left: `${a.x}%`, top: reveal ? `calc(var(--fy0, 0px) + ${a.y} * var(--fys, 1%))` : `${a.y}%` }}>
           <div className="box"><Icon name={a.icon} /></div>
           <span className="nm">{a.label}</span>
           <span className="nt">{notes[a.id] ?? ""}</span>
@@ -54,7 +54,7 @@ function FlowStage({ scene, step, steps, index, sw, reduce, reveal }: EngineProp
       {pos && (
         <div className={`packet ${(step.tone as string) ?? "ask"} ${pos.go ? "go" : ""}`}
           // In the lesson player the packet sits fully above the box it lands on (see .ss-native .packet).
-          style={{ left: `${pos.x}%`, top: reveal ? `calc(${pos.y + 23}% - var(--box, 64px) / 2 - 8px)` : `${pos.y}%` }}>
+          style={{ left: `${pos.x}%`, top: reveal ? `calc(var(--fy0, 0px) + ${pos.y + 23} * var(--fys, 1%) - var(--box, 64px) / 2 - 8px)` : `${pos.y}%` }}>
           {String(step.packet ?? "")}
         </div>
       )}
