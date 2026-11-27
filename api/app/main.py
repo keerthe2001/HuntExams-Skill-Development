@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 
 from app import (
     links,
@@ -125,31 +125,72 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     return app
 
 
-# Pages from the previous huntexams.com, sent permanently (301) to their closest new page so
-# old links and search results keep working after the switch.
-LEGACY_REDIRECTS: list[tuple[str, str]] = [
-    ("courses/agentic-ai", "/roadmap"),
-    ("courses/gen-ai", "/roadmap"),
-    ("courses", "/learn"),
-    ("visual", "/learn"),
-    ("blog", "/guides"),
-    ("interview-questions", "/learn"),
-    ("interview-room", "/learn"),
-    ("companies", "/guides"),
-    ("resume", "/guides"),
-    ("search", "/learn"),
-    ("start", "/signup"),
-    ("contact", "/about"),
-    ("disclaimer", "/terms"),
+# Pages from the previous huntexams.com. Ones with a real equivalent here move permanently
+# (301). The old course library (HTML, PHP, C++, SQL, Bootstrap, blog posts...) has no
+# equivalent, so it answers 410 Gone: search engines drop those URLs quickly instead of
+# treating a redirect to an unrelated page as a "soft 404".
+GONE = "gone"
+LEGACY_REDIRECTS: list[tuple[str, str, bool]] = [
+    # (old path prefix, target, also applies to sub-pages)
+    ("courses/agentic-ai", "/", True),
+    ("courses/gen-ai", "/", True),
+    ("courses", "/", False),
+    ("courses", GONE, True),
+    ("visual", "/", False),
+    ("visual", GONE, True),
+    ("blog", "/guides", False),
+    ("blog", GONE, True),
+    ("interview-questions", GONE, True),
+    ("interview-room", GONE, True),
+    ("companies", GONE, True),
+    ("resume", GONE, True),
+    ("search", "/", True),
+    ("start", "/signup", False),
+    ("contact", "/about", False),
+    ("disclaimer", "/terms", False),
 ]
 
 
 def legacy_target(path: str) -> str | None:
+    """Where an old URL goes: a path to redirect to, GONE, or None (not an old URL)."""
     path = path.strip("/")
-    for prefix, target in LEGACY_REDIRECTS:
-        if path == prefix or path.startswith(prefix + "/"):
+    for prefix, target, deep in LEGACY_REDIRECTS:
+        if path == prefix or (deep and path.startswith(prefix + "/")):
             return target
     return None
+
+
+# Single-page-app routes. Everything here is personal or interactive, so search engines are
+# told not to index it (X-Robots-Tag). Public, indexable pages are server-rendered in seo.py.
+APP_ROUTES = (
+    "roadmap",
+    "dashboard",
+    "practice",
+    "missions",
+    "profile",
+    "certificate",
+    "admin",
+    "lab",
+    "diagnostic",
+    "login",
+    "signup",
+    "forgot-password",
+    "reset-password",
+    "onboarding",
+    "verify",
+)
+
+GONE_HTML = (
+    '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+    '<meta name="viewport" content="width=device-width,initial-scale=1">'
+    '<meta name="robots" content="noindex"><title>This page was removed | HuntExams</title>'
+    "<style>body{font:17px/1.6 system-ui,sans-serif;max-width:560px;margin:15vh auto;"
+    "padding:0 20px;"
+    "color:#e8eef9;background:#0a0f0c}a{color:#4ade80}</style></head><body>"
+    "<h1>This page was removed</h1><p>HuntExams is now a visual course on agentic AI "
+    'engineering. The old lessons are gone.</p><p><a href="/">Start learning →</a></p>'
+    "</body></html>"
+)
 
 
 def _serve_web(app: FastAPI, dist: Path) -> None:
@@ -173,9 +214,17 @@ def _serve_web(app: FastAPI, dist: Path) -> None:
                 status_code=404, content={"detail": {"code": "not_found", "message": "Not found"}}
             )
         if (target := legacy_target(path)) is not None:
+            if target == GONE:
+                return HTMLResponse(  # type: ignore[return-value]
+                    GONE_HTML, status_code=410, headers={"X-Robots-Tag": "noindex"}
+                )
             return RedirectResponse(target, status_code=301)  # type: ignore[return-value]
         candidate = (root / path).resolve()
         # Never serve anything outside the dist folder (no ../ traversal).
         if path and candidate.is_relative_to(root) and candidate.is_file():
             return FileResponse(candidate)
-        return FileResponse(index)
+        first = path.strip("/").split("/", 1)[0]
+        if first in APP_ROUTES:
+            return FileResponse(index, headers={"X-Robots-Tag": "noindex"})
+        # Anything else doesn't exist: a real 404 (the app shows its "not found" page).
+        return FileResponse(index, status_code=404, headers={"X-Robots-Tag": "noindex"})

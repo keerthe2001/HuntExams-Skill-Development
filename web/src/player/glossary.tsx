@@ -70,8 +70,8 @@ function WordTip({ term, children }: { term: Term; children: ReactNode }) {
       window.removeEventListener("scroll", gone, true); window.removeEventListener("resize", gone);
     };
   }, [open]);
-  // Rendered into the world root (not inside scrolling panels) so it is never clipped.
-  const host = typeof document !== "undefined" ? document.querySelector(".world") ?? document.body : null;
+  // Rendered into <body> (not inside scrolling panels) so it is never clipped.
+  const host = typeof document !== "undefined" ? document.body : null;
   return (
     <>
       <button ref={btn} type="button" className="w-word-btn" aria-expanded={open} onClick={toggle}>{children}</button>

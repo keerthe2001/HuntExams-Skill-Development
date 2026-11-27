@@ -9,7 +9,7 @@ import { useTitle } from "@/lib/util";
 
 function safeNext(raw: string | null): string {
   // Only allow same-site relative paths, never "//evil.com" or absolute URLs.
-  return raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : "/learn";
+  return raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : "/";
 }
 
 export function AuthPage({ mode }: { mode: "login" | "signup" }) {
@@ -179,7 +179,7 @@ export function Onboarding() {
     setErr("");
     try {
       setUser(await api<User>("/me", { method: "PATCH", body: { skill_level: skill, time_budget: budget, complete_onboarding: true } }));
-      nav("/learn", { replace: true });
+      nav("/", { replace: true });
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Couldn't save. Try again."); setBusy(false); }
   };
 
@@ -245,7 +245,7 @@ export function Onboarding() {
         {step < 3 ? (
           <button className="btn btn-primary" type="button" onClick={() => setStep((s) => s + 1)} disabled={(step === 1 && !skill) || (step === 2 && !budget)}>Continue</button>
         ) : (
-          <button className="btn btn-primary" type="button" onClick={() => void finish()} disabled={busy}>{busy ? "Saving…" : "Enter the AI world"}</button>
+          <button className="btn btn-primary" type="button" onClick={() => void finish()} disabled={busy}>{busy ? "Saving…" : "Start learning"}</button>
         )}
       </div>
     </div>

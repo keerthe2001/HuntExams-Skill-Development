@@ -69,7 +69,7 @@ export function LabPage() {
   const step = steps[i]!;
   const isRead = step.kind === "read";
   const isDone = passed.has(step.id);
-  const exitTo = lab.topic ? `/learn/${lab.topic.slug}?step=lab` : "/learn";
+  const exitTo = lab.topic ? `/learn/${lab.topic.slug}?step=done` : "/";
 
   const markDone = async (src: string) => {
     const next = new Set(passed); next.add(step.id); setPassed(next);

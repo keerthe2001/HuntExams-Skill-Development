@@ -3,11 +3,9 @@ import { BrowserRouter, Route, Routes } from "react-router";
 
 import { AppLayout, Loading, PublicLayout, RequireAuth } from "@/components/Layout";
 import { SessionProvider, useSession } from "@/lib/session";
-import { loadTopicWorld } from "@/world/fx";
-import { GlossaryIndex, GlossaryTerm } from "@/world/GlossaryPages";
-import { WorldShell } from "@/world/Shell";
-import { WorldHome } from "@/world/WorldHome";
-import { WorldLevel } from "@/world/WorldLevel";
+import { GlossaryProvider } from "@/player/glossary";
+import { GlossaryIndex, GlossaryTerm } from "@/player/GlossaryPages";
+import { Player } from "@/player/Player";
 import type { ComponentType } from "react";
 
 /** Lazy-load a named export, so each page's code downloads only when it's opened. */
@@ -37,7 +35,6 @@ const PricingPage = lz(pub, "PricingPage");
 const Verify = lz(pub, "Verify");
 
 // Lessons, labs and admin pull in the editor and scene engines, so they load on demand.
-const TopicWorld = lazy(() => loadTopicWorld().then((m) => ({ default: m.TopicWorld })));
 const LabPage = lazy(() => import("@/pages/LabPage").then((m) => ({ default: m.LabPage })));
 const admin = () => import("@/pages/Admin");
 const AdminOverview = lazy(() => admin().then((m) => ({ default: m.AdminOverview })));
@@ -61,19 +58,20 @@ function Shell() {
 export function App() {
   return (
     <SessionProvider>
+      <GlossaryProvider>
       <BrowserRouter>
         <Suspense fallback={<Loading />}>
         <Routes>
-          {/* The learning world: the AI roadmap, worlds, places and the glossary. Tamil and
-              Hindi use the same pages under /ta and /hi (English text until translated). */}
+          {/* The lesson player is the home page and every topic page. Tamil and Hindi use the
+              same pages under /ta and /hi (English text until translated). */}
           {["", "ta", "hi"].map((lang) => (
-            <Route key={lang || "en"} path={lang || undefined} element={<WorldShell />}>
-              <Route index element={<WorldHome />} />
-              <Route path="learn" element={<WorldHome arrival={false} />} />
-              <Route path="world/:slug" element={<WorldLevel />} />
-              <Route path="learn/:slug" element={<TopicWorld />} />
-              <Route path="glossary" element={<GlossaryIndex />} />
-              <Route path="glossary/:term" element={<GlossaryTerm />} />
+            <Route key={lang || "en"} path={lang || undefined}>
+              <Route index element={<Player home />} />
+              <Route path="learn/:slug" element={<Player />} />
+              <Route element={<PublicLayout />}>
+                <Route path="glossary" element={<GlossaryIndex />} />
+                <Route path="glossary/:term" element={<GlossaryTerm />} />
+              </Route>
             </Route>
           ))}
           <Route element={<PublicLayout />}>
@@ -120,6 +118,7 @@ export function App() {
         </Routes>
         </Suspense>
       </BrowserRouter>
+      </GlossaryProvider>
     </SessionProvider>
   );
 }

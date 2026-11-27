@@ -11,26 +11,31 @@ and guided labs, and proven with reviewed missions and a verifiable certificate.
 | Curriculum | [`api/content`](api/content) | YAML, validated, loaded into Postgres, editable in the admin |
 
 
-## The learning world
+## The lesson player
 
-The site opens straight into a visual world, not a website. `/` is a short arrival ("Step
-inside"), then the AI roadmap as a universe: each level is a world (planet) and each topic a place
-(station) on a glowing path. A place is full screen, one step at a time:
-**See** (the motion scene) → **Experiment** (switch parts off, or a predict/tune question) →
-**Build** (run the worked example line by line; on phones, tap-to-build blocks) → **Guided lab**
-→ **Practice** (optional). Steps without content for a topic are skipped.
+huntexams.com opens straight into learning: the home page is the lesson player on the first
+topic (returning learners get a "continue" link). One screen that never scrolls, only its
+panels do; light and dark themes.
 
-* **Read panel:** simple words first, technical on tap, words to know. Hard words anywhere are
-  underlined; tap for a one-line meaning (`/api/glossary`, built from every topic's `words`).
-* **Search engines:** `/`, `/learn`, `/world/<level>`, `/learn/<topic>`, `/glossary` and
-  `/glossary/<term>` are server-rendered by the API (`api/app/seo.py`) with the full text,
-  canonical, hreflang, Open Graph and JSON-LD, and are in `/sitemap.xml`. The app replaces that
-  HTML on load and shows the same text in the Read panel.
-* **Guests first:** no sign-up needed to learn. Progress is kept in the browser and copied to the
-  account after sign-up.
-* **Tamil and Hindi:** `/ta/...` and `/hi/...` already route. They show English (noindex,
-  canonical to English) until translations are added; then add the language to
-  `PUBLISHED_LANGS` (`api/app/seo.py`) and `PUBLISHED` (`web/src/world/lang.tsx`).
+* **Desktop:** topics by world on the left; in the middle the steps **See → Try → Build →
+  Quiz**, the visual stage (scaled to fit, like a video), Back/Next, and the explanation
+  (Simple English | Technical, tappable hard words); on the right a lesson companion (words
+  on screen now, this topic's checklist, up next, the guided lab).
+* **Tablet / small laptop (≤1180 px):** topics become a drawer, the companion hides.
+* **Phone (≤700 px):** stacked; the explanation folds into a "Read" row; Back/Next under the
+  thumb; tap-to-build code blocks in Build.
+* **Guided labs** stay a separate full-screen layout (`/lab/<slug>`).
+
+## Search engines
+
+* Indexable and server-rendered with full text, canonical, Open Graph and JSON-LD (`api/app/seo.py`):
+  `/`, `/learn/<topic>`, `/glossary`, `/glossary/<term>`, `/guides`, `/guides/<slug>`, `/about`,
+  `/privacy`, `/terms`, `/pricing`, `/links`. All of them, and only them, are in `/sitemap.xml`.
+* Personal or interactive app pages (login, dashboard, labs, admin…) send `X-Robots-Tag: noindex`.
+* Unknown URLs return a real 404. Old-site URLs with an equivalent 301 to it; the old course
+  library (`/courses/<x>/…`, `/blog/<post>`, `/visual/<x>`) returns 410 Gone so it drops out.
+* Tamil and Hindi (`/ta/…`, `/hi/…`) show English, noindex with a canonical to English, until
+  translations are added to `PUBLISHED_LANGS` (`api/app/seo.py`) and `PUBLISHED` (`web/src/player/lang.tsx`).
 
 ## What's in Release 1
 

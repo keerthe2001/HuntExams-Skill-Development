@@ -424,7 +424,15 @@ async def links_json(handle: str, db: DbDep, settings: SettingsDep) -> dict:
 
 # ---------------------------------------------------------------- SEO files
 
-STATIC_PAGES = ["/", "/guides", "/pricing", "/links", "/about", "/privacy", "/terms"]
+STATIC_PAGES = [
+    "/",
+    "/guides",
+    "/pricing",
+    "/links",
+    "/about",
+    "/privacy",
+    "/terms",
+]  # + topics, glossary, guides
 
 
 @public.get("/sitemap.xml")
@@ -455,12 +463,6 @@ async def sitemap(db: DbDep, settings: SettingsDep) -> Response:
 async def robots(settings: SettingsDep) -> PlainTextResponse:
     base = settings.public_site_url.rstrip("/")
     body = (
-        "User-agent: *\n"
-        "Allow: /\n"
-        "Disallow: /api/\n"
-        "Disallow: /go/\n"
-        "Disallow: /admin\n"
-        "Disallow: /dashboard\n"
-        f"\nSitemap: {base}/sitemap.xml\n"
+        f"User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /go/\n\nSitemap: {base}/sitemap.xml\n"
     )
     return PlainTextResponse(body, headers={"Cache-Control": "public, max-age=3600"})

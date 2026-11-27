@@ -1,0 +1,518 @@
+// The lesson player: the whole site's learning layout and the home page.
+// One screen that never scrolls (only its panels do): topics on the left, the visual stage in
+// the middle with its steps (See → Try → Build → Quiz), the explanation underneath, and a
+// lesson companion on the right. Tablets fold the side columns away; phones stack it all.
+import { lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router";
+
+import { Icon } from "@/components/Icon";
+import { ErrorBox, Loading } from "@/components/Layout";
+import { api } from "@/lib/api";
+import { useApi, useSession } from "@/lib/session";
+import type { Curriculum, Question, SceneStep, Topic } from "@/lib/types";
+import { useTitle } from "@/lib/util";
+import { QuestionCard } from "@/practice/QuestionCard";
+import { ScenePlayer } from "@/scenes/ScenePlayer";
+
+import { FlyLink, prefetchTopic, useFly, whenIdle } from "./fx";
+import { Words } from "./glossary";
+import { LangSwitch, SoonBanner, useLang } from "./lang";
+import { markDone, useProgress } from "./progress";
+import { term_slug } from "./slug";
+
+// The code editor and Python sandbox are big; they load when Build opens (prefetched when idle).
+const loadBuild = () => import("./BuildStep");
+const BuildStep = lazy(() => loadBuild().then((m) => ({ default: m.BuildStep })));
+
+type StepKey = "see" | "try" | "build" | "quiz" | "done";
+const LABEL: Record<StepKey, string> = { see: "See", try: "Try", build: "Build", quiz: "Quiz", done: "Done" };
+const WELCOME_KEY = "hx-welcomed";
+const worldName = (n: number) => (n === 0 ? "Starter" : `World ${n}`);
+
+function useMedia(q: string) {
+  const get = () => typeof window !== "undefined" && Boolean(window.matchMedia?.(q).matches);
+  const [m, setM] = useState(get);
+  useEffect(() => {
+    const mq = window.matchMedia?.(q);
+    if (!mq) return;
+    const on = () => setM(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, [q]);
+  return m;
+}
+
+function readFlag(key: string) { try { return localStorage.getItem(key) === "1"; } catch { return false; } }
+function writeFlag(key: string) { try { localStorage.setItem(key, "1"); } catch { /* private mode */ } }
+
+/** Scales its content (designed at `design` px wide) to fit the box, like a video: the whole
+ *  motion graphic stays visible on any screen. Phones skip it and scroll instead. */
+function FitBox({ design, enabled, children }: { design: number; enabled: boolean; children: ReactNode }) {
+  const outer = useRef<HTMLDivElement>(null);
+  const inner = useRef<HTMLDivElement>(null);
+  const [zoom, setZoom] = useState(1);
+  useEffect(() => {
+    if (!enabled) { setZoom(1); return; }
+    const o = outer.current, i = inner.current;
+    if (!o || !i || typeof ResizeObserver === "undefined") return;
+    let cur = 1;
+    const fit = () => {
+      const natural = i.getBoundingClientRect().height / cur;
+      if (!natural) return;
+      const next = Math.max(0.45, Math.min(1.3, o.clientWidth / design, o.clientHeight / natural));
+      if (Math.abs(next - cur) > 0.01) { cur = next; setZoom(next); }
+    };
+    const ro = new ResizeObserver(fit);
+    ro.observe(o); ro.observe(i);
+    fit();
+    return () => ro.disconnect();
+  }, [design, enabled]);
+  return (
+    <div ref={outer} className={`p-fit ${enabled ? "on" : ""}`}>
+      <div ref={inner} className="p-fit-in" style={enabled ? { width: design, zoom } : undefined}>{children}</div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- top bar
+
+function ThemeButton() {
+  const { theme, setTheme } = useSession();
+  return (
+    <button type="button" className="p-icon" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+      aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"} title={theme === "dark" ? "Light theme" : "Dark theme"}>
+      <Icon name={theme === "dark" ? "sun" : "moon"} />
+    </button>
+  );
+}
+
+function Account() {
+  const { user, logout } = useSession();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [open]);
+  if (!user) return <Link className="p-signin" to="/login">Sign in</Link>;
+  return (
+    <div className="p-account" ref={ref}>
+      <button type="button" className="p-avatar" aria-label="Your account" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        {user.name.trim()[0]?.toUpperCase() ?? "?"}
+      </button>
+      {open && (
+        <div className="p-menu" role="menu">
+          <b>{user.name}</b>
+          <Link role="menuitem" to="/dashboard">My progress</Link>
+          <Link role="menuitem" to="/missions">Missions</Link>
+          <Link role="menuitem" to="/certificate">Certificate</Link>
+          <Link role="menuitem" to="/profile">Settings</Link>
+          {user.role === "admin" && <Link role="menuitem" to="/admin">Admin</Link>}
+          <button type="button" role="menuitem" onClick={() => void logout()}>Log out</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Search({ cur, open, onClose }: { cur: Curriculum | null; open: boolean; onClose: () => void }) {
+  const [q, setQ] = useState("");
+  const [focus, setFocus] = useState(false);
+  const fly = useFly();
+  const { to } = useLang();
+  const all = useMemo(() => (cur?.levels ?? []).flatMap((lv) => lv.topics.map((t) => ({ ...t, world: worldName(lv.number) }))), [cur]);
+  const hits = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return [];
+    return all.filter((t) => `${t.title} ${t.summary}`.toLowerCase().includes(s)).slice(0, 8);
+  }, [all, q]);
+  const go = (slug: string) => { setQ(""); onClose(); fly(to(`/learn/${slug}`)); };
+  return (
+    <div className={`p-search ${open ? "open" : ""}`}>
+      <label className="p-search-box">
+        <Icon name="search" />
+        <input type="search" value={q} placeholder="Search any topic: RAG, tokens, agents…" aria-label="Search topics"
+          onChange={(e) => setQ(e.target.value)} onFocus={() => setFocus(true)} onBlur={() => window.setTimeout(() => setFocus(false), 150)}
+          onKeyDown={(e) => { if (e.key === "Enter" && hits[0]) go(hits[0].slug); if (e.key === "Escape") { setQ(""); onClose(); } }} />
+      </label>
+      {focus && q.trim() && (
+        <div className="p-results" role="listbox" aria-label="Matching topics">
+          {hits.length ? hits.map((h) => (
+            <button key={h.slug} type="button" role="option" aria-selected="false" onMouseDown={(e) => e.preventDefault()} onClick={() => go(h.slug)}>
+              <b>{h.title}</b><span>{h.world} · {h.summary}</span>
+            </button>
+          )) : <p>No topic matches “{q.trim()}”.</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- sidebar
+
+function Sidebar({ cur, current, done, open, onClose }: { cur: Curriculum; current: string; done: Set<string>; open: boolean; onClose: () => void }) {
+  const { to } = useLang();
+  const here = cur.levels.find((lv) => lv.topics.some((t) => t.slug === current));
+  const [expanded, setExpanded] = useState<string | null>(here?.slug ?? cur.levels[0]?.slug ?? null);
+  useEffect(() => { if (here) setExpanded(here.slug); }, [here]);
+  const total = cur.levels.reduce((n, lv) => n + lv.topics.length, 0);
+  const finished = cur.levels.reduce((n, lv) => n + lv.topics.filter((t) => done.has(t.slug)).length, 0);
+  return (
+    <>
+      {open && <div className="p-scrim" onClick={onClose} aria-hidden="true" />}
+      <nav className={`p-side ${open ? "open" : ""}`} aria-label="Topics">
+        <div className="p-course">
+          <b>{cur.path.title}</b>
+          <div className="p-progress-row"><span>Your progress</span><span>{finished} / {total}</span></div>
+          <div className="p-bar"><span style={{ width: `${total ? (finished / total) * 100 : 0}%` }} /></div>
+        </div>
+        {cur.levels.map((lv) => {
+          const isOpen = expanded === lv.slug;
+          const n = lv.topics.filter((t) => done.has(t.slug)).length;
+          return (
+            <section key={lv.slug} className="p-world">
+              <button type="button" className="p-world-btn" aria-expanded={isOpen} onClick={() => setExpanded(isOpen ? null : lv.slug)}>
+                <span><small>{worldName(lv.number)}{lv.optional ? " · optional" : ""}</small>{lv.title}</span>
+                <em>{n}/{lv.topics.length}</em>
+              </button>
+              {isOpen && (
+                <ol>
+                  {lv.topics.map((t) => {
+                    const isCur = t.slug === current, isDone = done.has(t.slug);
+                    return (
+                      <li key={t.slug}>
+                        <FlyLink to={to(`/learn/${t.slug}`)} preload={t.slug} className={`p-topic ${isCur ? "cur" : ""} ${isDone ? "done" : ""}`}
+                          aria-current={isCur ? "page" : undefined} onClick={onClose}>
+                          <span className="p-dot" aria-hidden="true">{isDone ? "✓" : ""}</span>
+                          <span>{t.title}</span>
+                          {t.lab && <i title="Has a guided lab">lab</i>}
+                        </FlyLink>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </section>
+          );
+        })}
+        <div className="p-side-foot">
+          <Link to={to("/glossary")}>Glossary</Link><Link to="/guides">Guides</Link><Link to="/about">About</Link>
+          <Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link>
+        </div>
+      </nav>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- the player
+
+export function Player({ home = false }: { home?: boolean }) {
+  const params = useParams();
+  const { user, celebrate } = useSession();
+  const { to, lang } = useLang();
+  const fly = useFly();
+  const [search, setSearch] = useSearchParams();
+  const { data: cur, error: curErr, reload: reloadCur } = useApi<Curriculum>("/curriculum");
+  const { done, refresh } = useProgress();
+  const firstSlug = cur?.levels.find((lv) => lv.topics.length)?.topics[0]?.slug;
+  const slug = params.slug ?? (home ? firstSlug : undefined);
+  const { data: t, error, loading, reload } = useApi<Topic>(slug ? `/topics/${slug}` : null, [user?.id]);
+  const [mode, setMode] = useState<"simple" | "eng">(user?.profile.explain_mode ?? "simple");
+  const [sceneIdx, setSceneIdx] = useState(0);
+  const [caption, setCaption] = useState("");
+  const [drawer, setDrawer] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [welcomed, setWelcomed] = useState(() => readFlag(WELCOME_KEY));
+  const [dir, setDir] = useState<"fwd" | "back">("fwd");
+  const [readOpen, setReadOpen] = useState(false);
+  const phone = useMedia("(max-width: 700px)");
+  const sentWatched = useRef(false);
+  useTitle(home ? "Learn agentic AI with visuals" : (t?.title ?? "Learn"));
+
+  // The player owns the whole screen: the page itself never scrolls.
+  useEffect(() => {
+    document.documentElement.classList.add("in-player");
+    return () => document.documentElement.classList.remove("in-player");
+  }, []);
+  useEffect(() => { setSceneIdx(0); setCaption(""); sentWatched.current = false; setDrawer(false); }, [slug]);
+  useEffect(() => { if (user) setMode(user.profile.explain_mode); }, [user]);
+  useEffect(() => { whenIdle(() => { void loadBuild(); }); }, []);
+  useEffect(() => { if (t?.next) { const n = t.next; whenIdle(() => prefetchTopic(n)); } }, [t?.next]);
+
+  const plan = useMemo(() => {
+    if (!t) return null;
+    const b = t.body;
+    const switchScene = b.scenes.findIndex((s) => (s.switches ?? []).length > 0);
+    const tryQ: Question | undefined = switchScene >= 0 ? undefined : (b.checks.find((q) => q.type === "tune") ?? b.checks.find((q) => q.type === "predict"));
+    const quiz = b.checks.filter((q) => q !== tryQ);
+    const steps: StepKey[] = ["see"];
+    if (switchScene >= 0 || tryQ) steps.push("try");
+    if (b.code || b.exercise) steps.push("build");
+    if (quiz.length) steps.push("quiz");
+    return { steps, switchScene, tryQ, quiz };
+  }, [t]);
+
+  const raw = search.get("step") as StepKey | null;
+  const step: StepKey = plan && raw && (plan.steps.includes(raw) || raw === "done") ? raw : "see";
+  const at = plan ? (step === "done" ? plan.steps.length : plan.steps.indexOf(step)) : 0;
+
+  const sendWatched = useCallback(async () => {
+    if (!user || !t || sentWatched.current || t.progress?.watched) return;
+    sentWatched.current = true;
+    try { celebrate(await api(`/topics/${t.slug}/watched`, { method: "POST" })); void refresh(); } catch { sentWatched.current = false; }
+  }, [user, t, celebrate, refresh]);
+
+  const go = useCallback((k: StepKey) => {
+    if (!plan) return;
+    const target = k === "done" ? plan.steps.length : plan.steps.indexOf(k);
+    setDir(target < at ? "back" : "fwd");
+    const next = new URLSearchParams(search);
+    if (k === "see") next.delete("step"); else next.set("step", k);
+    setSearch(next);
+  }, [plan, at, search, setSearch]);
+
+  useEffect(() => {
+    if (step === "done" && t) { markDone(t.slug); void sendWatched(); }
+  }, [step, t, sendWatched]);
+
+  // Arrow keys move between steps (not while typing).
+  useEffect(() => {
+    if (!plan) return;
+    const key = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if (el.closest("input, textarea, select, .cm-editor, [contenteditable]")) return;
+      const order: StepKey[] = [...plan.steps, "done"];
+      if (e.key === "ArrowRight" && at < order.length - 1) go(order[at + 1]!);
+      if (e.key === "ArrowLeft" && at > 0) go(order[at - 1]!);
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [plan, at, go]);
+
+  const nextTopicTitle = useMemo(() => {
+    if (!t?.next || !cur) return null;
+    for (const lv of cur.levels) for (const x of lv.topics) if (x.slug === t.next) return x.title;
+    return null;
+  }, [cur, t?.next]);
+
+  const resume = useMemo(() => {
+    if (!home || !cur || !done.size) return null;
+    for (const lv of cur.levels) for (const x of lv.topics) if (!done.has(x.slug)) return x;
+    return null;
+  }, [home, cur, done]);
+
+  const closeWelcome = () => { writeFlag(WELCOME_KEY); setWelcomed(true); };
+
+  // ------------------------------------------------------------ frame
+  const frame = (main: ReactNode, side?: ReactNode) => (
+    <div className="p-root">
+      <header className="p-top">
+        <button type="button" className="p-icon p-menu-btn" aria-label="All topics" aria-expanded={drawer} onClick={() => setDrawer((d) => !d)}>
+          <Icon name="menu" />
+        </button>
+        <Link to={to("/")} className="p-logo" aria-label="HuntExams home"><span className="mark" aria-hidden="true" /><span>HuntExams</span></Link>
+        <Search cur={cur} open={searchOpen} onClose={() => setSearchOpen(false)} />
+        <span className="p-grow" />
+        <button type="button" className="p-icon p-search-btn" aria-label="Search topics" onClick={() => setSearchOpen((s) => !s)}><Icon name="search" /></button>
+        <span className="p-lang"><LangSwitch /></span>
+        <ThemeButton />
+        <Account />
+      </header>
+      <SoonBanner />
+      <div className="p-body">
+        {cur && <Sidebar cur={cur} current={slug ?? ""} done={done} open={drawer} onClose={() => setDrawer(false)} />}
+        {main}
+        {side}
+      </div>
+    </div>
+  );
+
+  if (!cur && curErr) return frame(<main className="p-mid"><ErrorBox error={curErr} retry={reloadCur} /></main>);
+  if ((loading || !slug) && !t) return frame(<main className="p-mid"><Loading label="Opening the lesson" /></main>);
+  if (error || !t || !plan) {
+    return frame(
+      <main className="p-mid">
+        <div className="p-missing"><h1>This topic doesn't exist</h1><p>It may have moved. Pick one from the list, or start at the beginning.</p>
+          <Link className="p-btn primary" to={to("/")}>Start learning</Link></div>
+        {error && error.status !== 404 && <ErrorBox error={error} retry={reload} />}
+      </main>,
+    );
+  }
+
+  const b = t.body;
+  const order: StepKey[] = [...plan.steps, "done"];
+  const nextStep = order[at + 1];
+  const scene = b.scenes[sceneIdx];
+  const lastScene = sceneIdx >= b.scenes.length - 1;
+  const words = (s: string) => <Words text={s} />;
+  const onStep = (s: SceneStep) => setCaption(s.caption);
+  const liveWord = (w: string) => Boolean(caption) && caption.toLowerCase().includes(w.toLowerCase());
+  const techPoints = b.points.filter((p) => p.eng);
+  const nextLabel = nextStep === "done" ? "Finish topic" : nextStep ? `Next: ${LABEL[nextStep]}` : "";
+
+  const stage = (
+    <div className="p-stage" data-dir={dir} data-step={step}>
+      {step === "see" && scene && (
+        <div className="p-panel p-see" key={`see-${sceneIdx}`}>
+          <FitBox design={760} enabled={!phone}>
+            <ScenePlayer key={`${t.slug}-${sceneIdx}`} scene={scene} hideSwitches renderText={words} onStep={onStep}
+              autoplay={user?.profile.autoplay ?? true} onFinished={() => { if (lastScene) void sendWatched(); }} />
+          </FitBox>
+          {b.scenes.length > 1 && (
+            <div className="p-dots" role="tablist" aria-label="Scenes">
+              {b.scenes.map((s, k) => <button key={k} type="button" role="tab" aria-selected={k === sceneIdx} aria-label={`Scene ${k + 1}: ${s.title}`} onClick={() => setSceneIdx(k)} />)}
+            </div>
+          )}
+        </div>
+      )}
+      {step === "try" && (
+        <div className="p-panel" key="try">
+          <h2 className="p-h">Your turn: change it and watch what happens.</h2>
+          {plan.switchScene >= 0 ? (
+            <FitBox design={760} enabled={!phone}>
+              <ScenePlayer key={`${t.slug}-try`} scene={b.scenes[plan.switchScene]!} renderText={words} onStep={onStep} autoplay switchesLabel="Switch something off and watch what breaks" />
+            </FitBox>
+          ) : plan.tryQ && <QuestionCard key={`${t.slug}-${plan.tryQ.id}`} topic={t.slug} q={plan.tryQ} index={0} alreadyPassed={Boolean(t.progress?.passed_ids.includes(plan.tryQ.id))} />}
+        </div>
+      )}
+      {step === "build" && (
+        <div className="p-panel" key="build">
+          <h2 className="p-h">Build it in real Python.</h2>
+          <Suspense fallback={<Loading label="Loading Python" />}><BuildStep t={t} phone={phone} /></Suspense>
+        </div>
+      )}
+      {step === "quiz" && (
+        <div className="p-panel" key="quiz">
+          <h2 className="p-h">Quick quiz <small>optional</small></h2>
+          <div className="p-qs">
+            {plan.quiz.map((q, k) => <QuestionCard key={`${t.slug}-${q.id}`} topic={t.slug} q={q} index={k} alreadyPassed={Boolean(t.progress?.passed_ids.includes(q.id))} />)}
+          </div>
+        </div>
+      )}
+      {step === "done" && (
+        <div className="p-panel p-done" key="done">
+          <div className="p-check" aria-hidden="true">✓</div>
+          <span className="p-kicker">Topic complete</span>
+          <h2>{t.title}</h2>
+          <div className="p-row center">
+            {t.lab && <Link className="p-btn primary" to={`/lab/${t.lab.slug}`}>Start the guided lab: {t.lab.title}</Link>}
+            {t.next && <FlyLink className={`p-btn ${t.lab ? "" : "primary"}`} to={to(`/learn/${t.next}`)} preload={t.next}>Next topic: {nextTopicTitle ?? "continue"} →</FlyLink>}
+          </div>
+          {!user && <p className="p-note">Your progress is saved in this browser. <Link to="/signup">Create a free account</Link> to keep it everywhere and earn your certificate.</p>}
+        </div>
+      )}
+    </div>
+  );
+
+  const main = (
+    <main className="p-mid">
+      <div className="p-head">
+        <div className="p-title">
+          <span className="p-crumb">{worldName(t.level.number)} · {t.level.title} · Topic {t.number} of {t.count}</span>
+          <h1>{t.title}</h1>
+        </div>
+        <ol className="p-steps" aria-label="Steps">
+          {plan.steps.map((s, k) => (
+            <li key={s}>
+              <button type="button" className={`p-step ${s === step ? "cur" : ""} ${k < at ? "past" : ""}`} aria-current={s === step ? "step" : undefined} onClick={() => go(s)}>
+                <i>{k < at ? "✓" : k + 1}</i><span>{LABEL[s]}</span>
+              </button>
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      {home && !welcomed && (
+        <div className="p-welcome" role="status">
+          {resume
+            ? <span>Welcome back. Continue where you left off: <FlyLink to={to(`/learn/${resume.slug}`)} preload={resume.slug}>{resume.title} →</FlyLink></span>
+            : <span>Learn agentic AI by watching it move. Follow the steps.</span>}
+          <button type="button" onClick={closeWelcome} aria-label="Close">✕</button>
+        </div>
+      )}
+
+      {stage}
+
+      <div className="p-ctl">
+        {at > 0
+          ? <button type="button" className="p-btn" onClick={() => go(order[at - 1]!)}>← Back</button>
+          : <span />}
+        <span className="p-grow" />
+        {step === "see" && !lastScene ? (
+          <button type="button" className="p-btn primary" onClick={() => setSceneIdx((k) => k + 1)}>Next scene →</button>
+        ) : step === "done" ? (
+          t.next ? <button type="button" className="p-btn primary" onClick={() => fly(to(`/learn/${t.next}`))}>Next topic →</button>
+            : <Link className="p-btn primary" to={to("/")}>Back to the start</Link>
+        ) : (
+          <button type="button" className="p-btn primary" onClick={() => go(nextStep!)}>{nextLabel} →</button>
+        )}
+      </div>
+
+      <section className={`p-text ${readOpen ? "open" : ""}`} aria-label="Explanation">
+        <div className="p-text-head">
+          <div className="p-toggle" role="group" aria-label="Explanation style">
+            <button type="button" aria-pressed={mode === "simple"} onClick={() => setMode("simple")}>Simple English</button>
+            <button type="button" aria-pressed={mode === "eng"} onClick={() => setMode("eng")}>Technical</button>
+          </div>
+          <span className="p-hint">Tap an underlined word for its meaning</span>
+          <button type="button" className="p-read-btn" aria-expanded={readOpen} onClick={() => setReadOpen((o) => !o)}>{readOpen ? "Hide ▾" : "Read ▴"}</button>
+        </div>
+        <article className="p-read">
+          {mode === "simple" ? (
+            <>
+              <p className="lead"><Words text={b.intro} /></p>
+              {b.points.map((p, k) => <p key={k}><b>{p.title}.</b> <Words text={p.text} /></p>)}
+            </>
+          ) : (
+            <>
+              {b.intro_eng ? <p className="lead"><Words text={b.intro_eng} /></p> : <p className="lead">This topic is mostly about the idea, so the simple explanation is the full story.</p>}
+              {techPoints.map((p, k) => <p key={k}><b>{p.title}.</b> <Words text={p.eng!} /></p>)}
+            </>
+          )}
+          {b.words && b.words.length > 0 && (
+            <div className="p-chips">
+              {b.words.map(([w]) => <Link key={w} to={to(`/glossary/${term_slug(w)}`)} className="p-chip">{w}</Link>)}
+            </div>
+          )}
+        </article>
+      </section>
+    </main>
+  );
+
+  const side = (
+    <aside className="p-comp" aria-label="Lesson companion">
+      {b.words && b.words.length > 0 && (
+        <section className="p-card">
+          <span className="p-kicker">Words in this lesson</span>
+          {b.words.map(([w, d]) => (
+            <div key={w} className={`p-word ${liveWord(w) ? "live" : ""}`}>
+              <b>{w}{liveWord(w) && <em>on screen now</em>}</b>
+              <span>{d.replace(/[*`]/g, "")}</span>
+            </div>
+          ))}
+        </section>
+      )}
+      <section className="p-card">
+        <span className="p-kicker">This topic</span>
+        {plan.steps.map((s, k) => (
+          <div key={s} className={`p-check-row ${k < at ? "past" : ""} ${s === step ? "cur" : ""}`}>
+            <span className="p-dot">{k < at ? "✓" : ""}</span>{LABEL[s]}{s === "quiz" ? " (optional)" : ""}
+          </div>
+        ))}
+        <p className="p-note">{user ? "Your progress saves to your account." : <><Link to="/signup">Sign up free</Link> to save progress on every device.</>}</p>
+      </section>
+      {(t.next || t.lab) && (
+        <section className="p-card">
+          <span className="p-kicker">Up next</span>
+          {t.lab && <Link className="p-next" to={`/lab/${t.lab.slug}`}><b>Guided lab: {t.lab.title}</b><span>A hands-on project, step by step →</span></Link>}
+          {t.next && <FlyLink className="p-next" to={to(`/learn/${t.next}`)} preload={t.next}><b>{nextTopicTitle ?? "Next topic"}</b><span>Next topic →</span></FlyLink>}
+        </section>
+      )}
+      {lang !== "en" && <p className="p-note">Tamil and Hindi lessons are on the way.</p>}
+    </aside>
+  );
+
+  return frame(main, side);
+}

@@ -18,13 +18,13 @@ from typing import Any
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import DbDep, SettingsDep
 from app.learning import published_levels, published_path
-from app.models import Lab, Level, PublishStatus, Topic
+from app.models import Guide, Lab, Level, PublishStatus, Topic
 
 LANGS = {"en": "English", "ta": "தமிழ்", "hi": "हिन्दी"}
 PUBLISHED_LANGS = ["en"]  # add "ta" / "hi" when their translations are reviewed
@@ -69,13 +69,14 @@ async def world_data(db: AsyncSession) -> dict[str, Any] | None:
             for pair in t.body.get("words") or []:
                 if len(pair) < 2 or not str(pair[0]).strip():
                     continue
-                term, meaning = str(pair[0]).strip(), str(pair[1]).strip()
+                term = str(pair[0]).strip()
+                meaning = ", ".join(str(x).strip() for x in pair[1:])  # YAML may split on commas
                 slug = term_slug(term)
                 entry = glossary.setdefault(
                     slug, {"slug": slug, "term": term, "meaning": meaning, "topics": []}
                 )
                 if t.slug not in [x["slug"] for x in entry["topics"]]:
-                    entry["topics"].append({"slug": t.slug, "title": t.title})
+                    entry["topics"].append({"slug": t.slug, "title": t.title, "summary": t.summary})
             if t.id in labs:
                 topics[-1]["lab"] = labs[t.id].slug
         worlds.append(
@@ -213,21 +214,18 @@ def world_name(w: dict[str, Any]) -> str:
 
 def map_page(data: dict[str, Any], lang: str) -> tuple[str, str, str]:
     parts = [
-        '<main class="ssr"><p class="lead">The AI roadmap</p>',
-        "<h1>Learn agentic AI by stepping into it</h1>",
+        '<main class="ssr"><p class="lead">HuntExams</p>',
+        "<h1>Learn agentic AI by watching it move</h1>",
         f'<p class="lead">{_e(data["summary"])}</p>',
-        "<p>Every idea is a place you visit: first you <b>see</b> it move, then you "
-        "<b>experiment</b> with it, then you <b>build</b> it in real Python, then a guided "
-        "lab and optional practice. Simple words first; the technical explanation is one "
+        "<p>Every topic has four steps: <b>see</b> it move, <b>try</b> it yourself, "
+        "<b>build</b> it in real Python, then a short <b>quiz</b>. Guided labs join the "
+        "topics into small projects. Simple English first; the technical explanation is one "
         'tap away. Hard words have a <a href="'
         + _e(_lang_path(lang, "/glossary"))
         + '">glossary</a>.</p>',
     ]
     for w in data["worlds"]:
-        parts.append(
-            f'<h2><a href="{_e(_lang_path(lang, "/world/" + w["slug"]))}">{world_name(w)}: '
-            f"{_e(w['title'])}</a></h2><p>{_e(w['summary'])}</p><ol>"
-        )
+        parts.append(f"<h2>{world_name(w)}: {_e(w['title'])}</h2><p>{_e(w['summary'])}</p><ol>")
         for t in w["topics"]:
             parts.append(
                 f'<li><a href="{_e(_lang_path(lang, "/learn/" + t["slug"]))}">{_e(t["title"])}</a>'
@@ -236,28 +234,9 @@ def map_page(data: dict[str, Any], lang: str) -> tuple[str, str, str]:
         parts.append("</ol>")
     parts.append("</main>")
     return (
-        "HuntExams — the visual AI roadmap: learn agentic AI step by step",
-        "A visual world for learning agentic AI engineering: see each idea move, play with "
-        "it, build it in real Python. Simple English first, technical depth when you want it.",
-        "".join(parts),
-    )
-
-
-def world_page(data: dict[str, Any], w: dict[str, Any], lang: str) -> tuple[str, str, str]:
-    parts = [
-        '<main class="ssr">',
-        _nav(lang, [("AI roadmap", "/"), (world_name(w), "/world/" + w["slug"])]),
-        f'<h1>{world_name(w)}: {_e(w["title"])}</h1><p class="lead">{_e(w["summary"])}</p><ol>',
-    ]
-    for t in w["topics"]:
-        parts.append(
-            f'<li><h3><a href="{_e(_lang_path(lang, "/learn/" + t["slug"]))}">{_e(t["title"])}</a>'
-            f"</h3><p>{_e(t['summary'])}</p></li>"
-        )
-    parts.append("</ol></main>")
-    return (
-        f"{w['title']}: {len(w['topics'])} topics explained visually | HuntExams",
-        f"{world_name(w)} of the AI roadmap: {w['summary']}",
+        "HuntExams — learn agentic AI with visuals, step by step",
+        "Learn agentic AI engineering by watching each idea move, trying it, and building it "
+        "in real Python. Simple English first, technical depth when you want it. Free.",
         "".join(parts),
     )
 
@@ -272,14 +251,8 @@ def topic_page(
     next_t = w["topics"][i + 1] if 0 <= i < len(slugs) - 1 else None
     parts = [
         '<main class="ssr"><article>',
-        _nav(
-            lang,
-            [
-                ("AI roadmap", "/"),
-                (world_name(w), "/world/" + w["slug"]),
-                (t.title, "/learn/" + t.slug),
-            ],
-        ),
+        _nav(lang, [("HuntExams", "/"), (t.title, "/learn/" + t.slug)]),
+        f'<p class="lead">{world_name(w)}: {_e(w["title"])}</p>',
         f"<h1>{_e(t.title)}</h1>",
         f'<p class="lead">{_e(t.summary)}</p>',
         "<h2>In simple words</h2>",
@@ -352,22 +325,93 @@ def glossary_term(g: dict[str, Any], lang: str) -> tuple[str, str, str]:
         '<main class="ssr">',
         _nav(
             lang,
-            [("AI roadmap", "/"), ("Glossary", "/glossary"), (g["term"], "/glossary/" + g["slug"])],
+            [("HuntExams", "/"), ("Glossary", "/glossary"), (g["term"], "/glossary/" + g["slug"])],
         ),
         f"<h1>What is {_e(g['term'])}?</h1>",
         f'<p class="lead">{md(g["meaning"])}</p>',
-        "<h2>See it in action</h2><ul>",
+        f"<p>{_e(g['term'])} is one of the words you meet while learning agentic AI "
+        "engineering. Below are the lessons where it appears: each one shows the idea moving "
+        "as a visual, lets you try it, then build it in Python.</p>",
+        "<h2>Learn it visually</h2><ul>",
     ]
     for t in g["topics"]:
         parts.append(
-            f'<li><a href="{_e(_lang_path(lang, "/learn/" + t["slug"]))}">{_e(t["title"])}</a></li>'
+            f'<li><a href="{_e(_lang_path(lang, "/learn/" + t["slug"]))}">{_e(t["title"])}</a>'
+            f" — {_e(t.get('summary', ''))}</li>"
         )
     parts.append("</ul></main>")
-    meaning = re.sub(r"[*`]", "", g["meaning"])
-    return (f"What is {g['term']}? Simple meaning | HuntExams AI glossary", meaning, "".join(parts))
+    meaning = re.sub(r"[*`]", "", g["meaning"]).rstrip(".")
+    lessons = ", ".join(t["title"] for t in g["topics"][:2])
+    description = f"What is {g['term']}? {meaning}. Learn it visually in: {lessons}."
+    return (
+        f"What is {g['term']}? Simple meaning | HuntExams AI glossary",
+        description,
+        "".join(parts),
+    )
 
 
 # ---------------------------------------------------------------- routes
+
+
+STATIC_PAGES: dict[str, tuple[str, str]] = {
+    "/about": (
+        "About HuntExams",
+        "HuntExams teaches agentic AI engineering with motion visuals first, then hands-on "
+        "Python, guided labs and reviewed projects. Built in Chennai, India.",
+    ),
+    "/privacy": (
+        "Privacy policy | HuntExams",
+        "What HuntExams stores and why, and how the links page counts visits without storing "
+        "your IP address.",
+    ),
+    "/terms": ("Terms of use | HuntExams", "The terms for using HuntExams and its certificates."),
+    "/pricing": (
+        "Pricing | HuntExams",
+        "Learn agentic AI free: every visual lesson, guided lab and practice question.",
+    ),
+}
+
+
+def static_page(path: str) -> tuple[str, str, str]:
+    """Meta and a short summary; the full text renders in the app on the same URL."""
+    title, description = STATIC_PAGES[path]
+    article = (
+        f'<main class="ssr"><h1>{_e(title.split(" | ")[0])}</h1><p class="lead">'
+        f'{_e(description)}</p><p><a href="/">Start learning</a></p></main>'
+    )
+    return title, description, article
+
+
+def guides_index(guides: list[Any]) -> tuple[str, str, str]:
+    parts = [
+        '<main class="ssr"><h1>Guides</h1><p class="lead">Career guides for AI engineers.</p><ul>'
+    ]
+    for g in guides:
+        parts.append(f'<li><a href="/guides/{_e(g.slug)}">{_e(g.title)}</a> — {_e(g.summary)}</li>')
+    parts.append("</ul></main>")
+    return (
+        "Guides: careers in AI engineering | HuntExams",
+        "Plain-English guides on becoming an agentic AI engineer: skills, projects and interviews.",
+        "".join(parts),
+    )
+
+
+def guide_page(g: Any) -> tuple[str, str, str]:
+    parts = [
+        '<main class="ssr"><article>',
+        _nav("en", [("HuntExams", "/"), ("Guides", "/guides"), (g.title, "/guides/" + g.slug)]),
+        f'<h1>{_e(g.title)}</h1><p class="lead">{_e(g.summary)}</p>',
+    ]
+    for sec in (g.body or {}).get("sections", []):
+        if sec.get("heading"):
+            parts.append(f"<h2>{_e(sec['heading'])}</h2>")
+        for para in str(sec.get("text") or "").split("\n\n"):
+            if para.strip():
+                parts.append(f"<p>{md(para)}</p>")
+        if sec.get("bullets"):
+            parts.append("<ul>" + "".join(f"<li>{md(b)}</li>" for b in sec["bullets"]) + "</ul>")
+    parts.append("</article></main>")
+    return (f"{g.title} | HuntExams guides", g.summary, "".join(parts))
 
 
 def preload_files(manifest: dict[str, Any] | None, key: str) -> list[str]:
@@ -396,7 +440,7 @@ def boot_script(data: dict[str, Any]) -> str:
 def register(app: FastAPI, template: str, manifest: dict[str, Any] | None = None) -> None:
     """Add the server-rendered routes. Call before the web app's catch-all route."""
     router = APIRouter(include_in_schema=False)
-    topic_chunks = preload_files(manifest, "src/world/TopicWorld.tsx")
+    del manifest  # the lesson player is in the main bundle; nothing extra to preload
 
     async def respond(
         request: Request, db: Any, settings: Any, lang: str, path: str
@@ -407,7 +451,30 @@ def register(app: FastAPI, template: str, manifest: dict[str, Any] | None = None
         found: tuple[str, str, str] | None = None
         if data:
             org = {"@type": "Organization", "name": "HuntExams", "url": _abs(settings, "/")}
-            if path == "/":
+            if path in STATIC_PAGES:
+                found = static_page(path)
+            elif path == "/guides":
+                rows = await db.scalars(
+                    select(Guide).where(Guide.status == PublishStatus.PUBLISHED).order_by(Guide.id)
+                )
+                found = guides_index(list(rows))
+            elif path.startswith("/guides/"):
+                g = await db.scalar(
+                    select(Guide).where(Guide.slug == path.removeprefix("/guides/"))
+                )
+                if g and g.status == PublishStatus.PUBLISHED:
+                    found = guide_page(g)
+                    jsonld.append(
+                        {
+                            "@context": "https://schema.org",
+                            "@type": "Article",
+                            "headline": g.title,
+                            "description": g.summary,
+                            "url": _abs(settings, path),
+                            "publisher": org,
+                        }
+                    )
+            elif path == "/":
                 found = map_page(data, lang)
                 jsonld.append(
                     {
@@ -417,12 +484,6 @@ def register(app: FastAPI, template: str, manifest: dict[str, Any] | None = None
                         "url": _abs(settings, "/"),
                     }
                 )
-            elif path.startswith("/world/"):
-                slug = path.removeprefix("/world/")
-                w = next((x for x in data["worlds"] if x["slug"] == slug), None)
-                if w:
-                    found = world_page(data, w, lang)
-                    jsonld.append(_crumbs(settings, [("AI roadmap", "/"), (world_name(w), path)]))
             elif path.startswith("/learn/"):
                 slug = path.removeprefix("/learn/")
                 topic = await db.scalar(select(Topic).where(Topic.slug == slug))
@@ -435,11 +496,7 @@ def register(app: FastAPI, template: str, manifest: dict[str, Any] | None = None
                     jsonld += [
                         _crumbs(
                             settings,
-                            [
-                                ("AI roadmap", "/"),
-                                (world_name(w), "/world/" + w["slug"]),
-                                (topic.title, path),
-                            ],
+                            [("HuntExams", "/"), (topic.title, path)],
                         ),
                         {
                             "@context": "https://schema.org",
@@ -489,12 +546,17 @@ def register(app: FastAPI, template: str, manifest: dict[str, Any] | None = None
             from app import routes_learn
 
             boot: dict[str, Any] = {}
-            if path == "/" or path.startswith("/world/"):
+            first = next(
+                (w["topics"][0]["slug"] for w in (data or {}).get("worlds", []) if w["topics"]),
+                None,
+            )
+            slug = path.removeprefix("/learn/") if path.startswith("/learn/") else None
+            if path == "/":
+                slug = first
+            if slug:
+                # The lesson player renders at once: curriculum and topic come with the page.
                 boot["/curriculum"] = await routes_learn.curriculum(db)
-            elif path.startswith("/learn/"):
-                slug = path.removeprefix("/learn/")
                 boot[f"/topics/{slug}"] = await routes_learn.get_topic(slug, db, None)
-                extra += [f'<link rel="modulepreload" href="/{f}" />' for f in topic_chunks]
             if boot:
                 extra.append(boot_script(boot))
         html = render_shell(
@@ -513,14 +575,23 @@ def register(app: FastAPI, template: str, manifest: dict[str, Any] | None = None
         return HTMLResponse(html, status_code=status, headers={"Cache-Control": "no-cache"})
 
     def add(path_pattern: str, lang: str | None) -> None:
-        async def handler(request: Request, db: DbDep, settings: SettingsDep) -> HTMLResponse:
+        async def handler(request: Request, db: DbDep, settings: SettingsDep) -> Response:
             code = lang or "en"
             path = request.url.path
             if code != "en":
                 path = path.removeprefix(f"/{code}") or "/"
+            path = path.rstrip("/") or "/"
+            # Pages that merged into the lesson player: one permanent redirect each.
             if path == "/learn":
-                path = "/"
-            return await respond(request, db, settings, code, path.rstrip("/") or "/")
+                return RedirectResponse(_lang_path(code, "/"), status_code=301)
+            if path.startswith("/world/"):
+                data = await cached_world(db)
+                worlds = (data or {}).get("worlds", [])
+                w = next((x for x in worlds if x["slug"] == path[7:]), None)
+                if w and w["topics"]:
+                    target = _lang_path(code, "/learn/" + w["topics"][0]["slug"])
+                    return RedirectResponse(target, status_code=301)
+            return await respond(request, db, settings, code, path)
 
         router.add_api_route(path_pattern, handler, methods=["GET"])
 
@@ -528,6 +599,8 @@ def register(app: FastAPI, template: str, manifest: dict[str, Any] | None = None
         for p in ["/learn", "/world/{slug}", "/learn/{slug}", "/glossary", "/glossary/{slug}"]:
             add(prefix + p, lang)
         add(prefix or "/", lang)
+    for p in ["/guides", "/guides/{slug}", *STATIC_PAGES]:
+        add(p, None)
     app.include_router(router)
 
 
@@ -536,7 +609,6 @@ def sitemap_paths(data: dict[str, Any] | None) -> list[str]:
         return []
     paths = ["/glossary"]
     for w in data["worlds"]:
-        paths.append("/world/" + w["slug"])
         paths += ["/learn/" + t["slug"] for t in w["topics"]]
     paths += ["/glossary/" + g["slug"] for g in data["glossary"]]
     return paths
