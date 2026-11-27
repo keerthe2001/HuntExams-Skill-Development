@@ -3,6 +3,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import type { Scene, SceneStep } from "@/lib/types";
 
 import { ENGINES } from "./engines";
+import { FitBox } from "./FitBox";
 
 export type SceneHandle = { go: (trackIndex: number) => void };
 
@@ -30,9 +31,14 @@ type Props = {
   hideSwitches?: boolean;
   switchesLabel?: string;
   renderText?: (text: string) => ReactNode;
+  /** "stage": the lesson player's layout. The visual fills the stage, steps and caption sit
+   *  beside it, and the controls are large. "card": the compact layout used elsewhere. */
+  variant?: "card" | "stage";
+  /** Stage only: fit the visual to the stage height too (false on phones: width only). */
+  fitHeight?: boolean;
 };
 
-export function ScenePlayer({ scene, autoplay = true, pace = 3800, onStep, onFinished, jump, tag, hideSwitches, switchesLabel, renderText }: Props) {
+export function ScenePlayer({ scene, autoplay = true, pace = 3800, onStep, onFinished, jump, tag, hideSwitches, switchesLabel, renderText, variant = "card", fitHeight = true }: Props) {
   const [sw, setSw] = useState<Record<string, boolean>>(() =>
     Object.fromEntries((scene.switches ?? []).map((s) => [s.id, true])));
   const steps = useMemo(() => visibleSteps(scene, sw), [scene, sw]);
@@ -102,6 +108,63 @@ export function ScenePlayer({ scene, autoplay = true, pace = 3800, onStep, onFin
 
   if (!Engine) return <div className="alert bad">Unknown scene engine: {scene.engine}</div>;
 
+  const switchesUi = !hideSwitches && (scene.switches ?? []).length > 0 && (
+    <div className="switches">
+      <span className="label">{switchesLabel ?? "Try it: switch something off"}</span>
+      {scene.switches!.map((s) => (
+        <label key={s.id} className="switch">
+          <input type="checkbox" checked={sw[s.id] ?? true} onChange={(e) => toggleSwitch(s.id, e.target.checked, s.track)} />
+          {s.label} <small>{sw[s.id] ? s.label_on : s.label_off}</small>
+        </label>
+      ))}
+    </div>
+  );
+
+  if (variant === "stage") {
+    return (
+      <div className="ss" ref={rootRef} aria-roledescription="motion scene">
+        <div className="ss-vis" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+          {scene.engine === "flow" && fitHeight ? (
+            // Flow diagrams lay out in percentages, so they fill the area natively (crisp, no scaling).
+            <div className="ss-native"><Engine scene={scene} step={step} index={idx} steps={steps} sw={sw} reduce={reduce} /></div>
+          ) : (
+            <FitBox design={scene.engine === "code" ? 600 : 480} fitHeight={fitHeight} max={2.2}>
+              <Engine scene={scene} step={step} index={idx} steps={steps} sw={sw} reduce={reduce} />
+            </FitBox>
+          )}
+        </div>
+        <div className="ss-side">
+          <span className="ss-title">{scene.title}</span>
+          <div className={`ss-cap ${tone === "bad" ? "bad" : tone === "good" ? "good" : ""}`} aria-live="polite">
+            <p>{renderText ? renderText(step.caption) : step.caption}</p>
+          </div>
+          <ol className="ss-steps" aria-label="Scene steps">
+            {scene.track.map((t, k) => {
+              const cls = [k === step.at ? "cur" : "", seen.has(k) && k !== step.at ? "done" : "", offTracks.includes(k) ? "off" : ""].join(" ");
+              return (
+                <li key={k}>
+                  <button type="button" className={cls} aria-current={k === step.at ? "step" : undefined}
+                    onClick={() => { const n = steps.findIndex((s) => s.at === k); go(n < 0 ? idx : n); }}>
+                    <i>{seen.has(k) && k !== step.at ? "✓" : k + 1}</i><span>{t}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+          {switchesUi}
+        </div>
+        <div className="ss-ctl">
+          <button className="ss-btn" type="button" onClick={() => go(idx - 1)} disabled={idx === 0} aria-label="Previous step">‹ Back</button>
+          <button className="ss-btn play" type="button" onClick={() => setPlaying((p) => !p)} aria-pressed={playing}>{playing ? "❚❚ Pause" : "▶ Play"}</button>
+          <button className="ss-btn" type="button" onClick={() => go(idx + 1)} disabled={idx >= steps.length - 1} aria-label="Next step">Next ›</button>
+          <div className="ss-progress" aria-hidden="true"><span style={{ width: `${((idx + 1) / steps.length) * 100}%` }} /></div>
+          <span className="ss-count">{idx + 1} / {steps.length}</span>
+          <button className="ss-btn ghost" type="button" onClick={() => { setI(0); setPlaying(true); }}>↺ Replay</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="scene" ref={rootRef} aria-roledescription="motion scene">
       <div className="scene-top">
@@ -141,17 +204,7 @@ export function ScenePlayer({ scene, autoplay = true, pace = 3800, onStep, onFin
         <span className="sp" />
         <button className="btn btn-text btn-sm" type="button" onClick={() => { setI(0); setPlaying(true); }}>↺ Replay</button>
       </div>
-      {!hideSwitches && (scene.switches ?? []).length > 0 && (
-        <div className="switches">
-          <span className="label">{switchesLabel ?? "Try it: switch something off"}</span>
-          {scene.switches!.map((s) => (
-            <label key={s.id} className="switch">
-              <input type="checkbox" checked={sw[s.id] ?? true} onChange={(e) => toggleSwitch(s.id, e.target.checked, s.track)} />
-              {s.label} <small>{sw[s.id] ? s.label_on : s.label_off}</small>
-            </label>
-          ))}
-        </div>
-      )}
+      {switchesUi}
     </div>
   );
 }

@@ -45,35 +45,6 @@ function useMedia(q: string) {
 function readFlag(key: string) { try { return localStorage.getItem(key) === "1"; } catch { return false; } }
 function writeFlag(key: string) { try { localStorage.setItem(key, "1"); } catch { /* private mode */ } }
 
-/** Scales its content (designed at `design` px wide) to fit the box, like a video: the whole
- *  motion graphic stays visible on any screen. Phones skip it and scroll instead. */
-function FitBox({ design, enabled, children }: { design: number; enabled: boolean; children: ReactNode }) {
-  const outer = useRef<HTMLDivElement>(null);
-  const inner = useRef<HTMLDivElement>(null);
-  const [zoom, setZoom] = useState(1);
-  useEffect(() => {
-    if (!enabled) { setZoom(1); return; }
-    const o = outer.current, i = inner.current;
-    if (!o || !i || typeof ResizeObserver === "undefined") return;
-    let cur = 1;
-    const fit = () => {
-      const natural = i.getBoundingClientRect().height / cur;
-      if (!natural) return;
-      const next = Math.max(0.45, Math.min(1.3, o.clientWidth / design, o.clientHeight / natural));
-      if (Math.abs(next - cur) > 0.01) { cur = next; setZoom(next); }
-    };
-    const ro = new ResizeObserver(fit);
-    ro.observe(o); ro.observe(i);
-    fit();
-    return () => ro.disconnect();
-  }, [design, enabled]);
-  return (
-    <div ref={outer} className={`p-fit ${enabled ? "on" : ""}`}>
-      <div ref={inner} className="p-fit-in" style={enabled ? { width: design, zoom } : undefined}>{children}</div>
-    </div>
-  );
-}
-
 type TextCard = { key: string; title: string; body: ReactNode; step?: number };
 
 /** The explanation as cards that slide (arrows, dots, swipe, arrow keys), never scroll.
@@ -414,24 +385,15 @@ export function Player({ home = false }: { home?: boolean }) {
     <div className="p-stage" data-dir={dir} data-step={step}>
       {step === "see" && scene && (
         <div className="p-panel p-see" key={`see-${sceneIdx}`}>
-          <FitBox design={760} enabled={!phone}>
-            <ScenePlayer key={`${t.slug}-${sceneIdx}`} scene={scene} hideSwitches renderText={words} onStep={onStep}
-              autoplay={user?.profile.autoplay ?? true} onFinished={() => { if (lastScene) void sendWatched(); }} />
-          </FitBox>
-          {b.scenes.length > 1 && (
-            <div className="p-dots" role="tablist" aria-label="Scenes">
-              {b.scenes.map((s, k) => <button key={k} type="button" role="tab" aria-selected={k === sceneIdx} aria-label={`Scene ${k + 1}: ${s.title}`} onClick={() => setSceneIdx(k)} />)}
-            </div>
-          )}
+          <ScenePlayer key={`${t.slug}-${sceneIdx}`} scene={scene} hideSwitches renderText={words} onStep={onStep} variant="stage" fitHeight={!phone}
+            autoplay={false} onFinished={() => { if (lastScene) void sendWatched(); }} />
         </div>
       )}
       {step === "try" && (
-        <div className="p-panel" key="try">
+        <div className={`p-panel ${plan.switchScene >= 0 ? "p-try-scene" : ""}`} key="try">
           <h2 className="p-h">Your turn: change it and watch what happens.</h2>
           {plan.switchScene >= 0 ? (
-            <FitBox design={760} enabled={!phone}>
-              <ScenePlayer key={`${t.slug}-try`} scene={b.scenes[plan.switchScene]!} renderText={words} onStep={onStep} autoplay switchesLabel="Switch something off and watch what breaks" />
-            </FitBox>
+            <ScenePlayer key={`${t.slug}-try`} scene={b.scenes[plan.switchScene]!} renderText={words} onStep={onStep} autoplay={false} variant="stage" fitHeight={!phone} switchesLabel="Switch something off and watch what breaks" />
           ) : plan.tryQ && <QuestionCard key={`${t.slug}-${plan.tryQ.id}`} topic={t.slug} q={plan.tryQ} index={0} alreadyPassed={Boolean(t.progress?.passed_ids.includes(plan.tryQ.id))} />}
         </div>
       )}
@@ -497,6 +459,12 @@ export function Player({ home = false }: { home?: boolean }) {
         {at > 0
           ? <button type="button" className="p-btn" onClick={() => go(order[at - 1]!)}>← Back</button>
           : <span />}
+        {step === "see" && b.scenes.length > 1 && (
+          <div className="p-dots" role="tablist" aria-label="Scenes">
+            <span>Scene {sceneIdx + 1} of {b.scenes.length}</span>
+            {b.scenes.map((s, k) => <button key={k} type="button" role="tab" aria-selected={k === sceneIdx} aria-label={`Scene ${k + 1}: ${s.title}`} onClick={() => setSceneIdx(k)} />)}
+          </div>
+        )}
         <span className="p-grow" />
         {step === "see" && !lastScene ? (
           <button type="button" className="p-btn primary" onClick={() => setSceneIdx((k) => k + 1)}>Next scene →</button>

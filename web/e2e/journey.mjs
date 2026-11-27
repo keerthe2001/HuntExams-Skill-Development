@@ -100,10 +100,10 @@ async function cardFor(slug, qid) {
 }
 async function answerAll(slug) {
   await page.goto(`${BASE}/learn/${slug}`);
-  await page.waitForSelector(".scene");
+  await page.waitForSelector(".ss");
   // Walk every scene to its last step, then finish the place (marks it watched).
   for (let s = 0; s < 6; s++) {
-    for (let k = 0; k < 15; k++) { const n = page.locator(".scene-ctl >> text=Next ›").first(); if (await n.isDisabled()) break; await n.click(); }
+    for (let k = 0; k < 15; k++) { const n = page.locator(".ss-ctl >> text=Next ›").first(); if (await n.isDisabled()) break; await n.click(); }
     const more = page.locator(".p-ctl >> text=Next scene");
     if (!(await more.count())) break;
     await more.click();

@@ -3,6 +3,16 @@
    light and dark themes both work. Desktop: topics | stage + text | companion.
    Tablet (≤1180px): topics become a drawer, companion hides. Phone (≤700px): stacked. */
 html.in-player, html.in-player body { height: 100%; overflow: hidden; }
+
+/* Scrollbars in the site's colours everywhere (thin, no arrow buttons, track invisible). */
+* { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+*:hover { scrollbar-color: var(--faint) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 99px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--faint); background-clip: padding-box; }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+::-webkit-scrollbar-corner { background: transparent; }
 .p-root { height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); }
 .p-grow { flex: 1; }
 
@@ -83,24 +93,89 @@ html.in-player, html.in-player body { height: 100%; overflow: hidden; }
 .p-welcome a { color: var(--brand); font-weight: 600; }
 .p-welcome button { width: 36px; height: 36px; border-radius: 50%; border: 0; background: transparent; color: var(--fg-2); cursor: pointer; }
 
-.p-stage { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; container-type: size; border-radius: var(--r-lg); scrollbar-gutter: stable; }
+.p-stage { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; container: stage / size; border-radius: var(--r-lg); scrollbar-gutter: stable; }
 .p-panel { display: grid; gap: 14px; align-content: start; min-height: 100%; }
 .p-stage[data-dir="fwd"] .p-panel { animation: p-fwd .4s cubic-bezier(.2, .8, .2, 1) both; }
 .p-stage[data-dir="back"] .p-panel { animation: p-back .4s cubic-bezier(.2, .8, .2, 1) both; }
 @keyframes p-fwd { from { opacity: 0; transform: translateX(28px); } }
 @keyframes p-back { from { opacity: 0; transform: translateX(-28px); } }
 @keyframes p-in { from { opacity: 0; transform: translateY(8px); } }
-/* The visual scales with the space it has: as wide as fits the stage's height. */
-.p-see { align-content: center; justify-items: center; }
-.p-fit.on { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-.p-see .p-fit.on { height: calc(100cqh - 34px); }
-.p-see:not(:has(.p-dots)) .p-fit.on { height: 100cqh; }
-.p-panel > .p-fit.on { height: calc(100cqh - 52px); }
-.p-fit-in { flex: none; }
-.p-fit:not(.on) { width: 100%; }
+/* See (and Try with switches): the stage-layout scene fills the stage. */
+.p-see { grid-template-rows: minmax(0, 1fr); height: 100%; }
+.p-try-scene { grid-template-rows: auto minmax(0, 1fr); height: 100%; }
+
+/* ---------------------------------------------------------------- the stage scene */
+.ss { height: 100%; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) clamp(230px, 27%, 330px); grid-template-rows: minmax(0, 1fr) auto; gap: 14px 18px; padding: 14px; border-radius: var(--r-lg); background: var(--card); border: 1px solid var(--line); }
+.ss-vis { min-width: 0; min-height: 0; display: flex; border-radius: 14px; background: radial-gradient(circle at 50% 45%, var(--card-2), var(--bg-2) 80%); border: 1px solid var(--line); padding: 10px; }
+/* The engine's own frame is dropped inside the stage: one clean surface, not a box in a box. */
+.ss-vis .stage { border: 0; background: transparent; border-radius: 0; }
+.ss-native { flex: 1; min-width: 0; min-height: 0; display: flex; container-type: size; }
+.ss-native .stage.flow { aspect-ratio: auto; width: 100%; height: 100%; }
+.ss-native .actor { max-width: 30%; gap: 6px; }
+.ss-native .actor .box { width: clamp(52px, 19cqh, 112px); height: clamp(52px, 19cqh, 112px); border-radius: clamp(14px, 4cqh, 24px); border-width: 2px; }
+.ss-native .actor .nm { font-size: clamp(13px, 4.6cqh, 19px); }
+.ss-native .actor .nt { font-size: clamp(11px, 3.4cqh, 15px); max-width: 22ch; }
+.ss-native .packet { font-size: clamp(12px, 4cqh, 17px); padding: .4em .9em; border-width: 2px; }
+.ss-native .actor.think .box::after { font-size: clamp(13px, 4cqh, 18px); }
+.fitbox { width: 100%; min-width: 0; }
+.fitbox.on { overflow: hidden; }
+.fitbox.on.fit-h { height: 100%; display: flex; align-items: center; justify-content: center; }
+.fitbox.on:not(.fit-h) { display: flex; justify-content: center; }
+.fitbox-in { flex: none; }
+.ss-side { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; container: side / size; }
+.ss-title { font-family: var(--font-display); font-size: 19px; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; }
+.ss-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.ss-steps button { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 4px 8px; border-radius: 10px; border: 0; background: transparent; color: var(--fg-2); font-size: 15px; font-weight: 500; text-align: left; cursor: pointer; }
+.ss-steps button:hover { background: var(--card-2); }
+.ss-steps button i { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-family: var(--font-mono); font-size: 13px; border: 2px solid var(--line-2); transition: all .3s; }
+.ss-steps button.done i { border-color: var(--brand); background: var(--brand); color: var(--brand-on); }
+.ss-steps button.cur { background: var(--acc-soft); color: var(--fg); font-weight: 600; }
+.ss-steps button.cur i { border-color: var(--acc); color: var(--acc); transform: scale(1.06); }
+.ss-steps button.off i { border-color: var(--bad); color: var(--bad); }
+.ss-cap { padding: 14px 16px; border-radius: 14px; background: var(--card-2); }
+.ss-cap p { margin: 0; font-size: clamp(16px, 1.25vw, 20px); line-height: 1.5; color: var(--fg); animation: p-in .35s ease both; }
+.ss-cap.bad { background: var(--bad-soft); }
+.ss-cap.good { background: var(--good-soft); }
+.ss .switches { border-top: 0; padding-top: 0; }
+/* Short stages (small laptops): compact step list so the caption always shows. */
+@container side (max-height: 380px) {
+  .ss-steps { gap: 2px; }
+  .ss-steps button { min-height: 32px; padding: 2px 6px; font-size: 14px; }
+  .ss-steps button i { width: 24px; height: 24px; font-size: 12px; }
+  .ss-title { font-size: 16px; }
+  .ss-cap { padding: 10px 12px; }
+}
+.ss-ctl { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; }
+.ss-btn { min-height: 48px; padding: 0 20px; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--fg); font-weight: 600; font-size: 16px; cursor: pointer; white-space: nowrap; transition: transform .12s, background .2s; }
+.ss-btn:hover:not(:disabled) { background: var(--card-2); }
+.ss-btn:active:not(:disabled) { transform: scale(.97); }
+.ss-btn:disabled { opacity: .4; cursor: default; }
+.ss-btn.play { min-width: 120px; border: 0; background: var(--brand-soft); color: var(--fg); }
+.ss-btn.ghost { border-color: transparent; color: var(--fg-2); }
+.ss-progress { flex: 1; height: 6px; border-radius: 99px; background: var(--line); overflow: hidden; min-width: 40px; }
+.ss-progress span { display: block; height: 100%; background: var(--brand); border-radius: 99px; transition: width .5s ease; }
+.ss-count { font-family: var(--font-mono); font-size: 13px; color: var(--faint); }
+/* Narrow stages (tablets in portrait, phones): steps and caption go under the visual. */
+@container stage (max-width: 760px) {
+  .ss { height: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; padding: 10px; gap: 10px; }
+  .ss-vis { padding: 6px; }
+  .ss-title { font-size: 16px; }
+  .ss-steps { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+  .ss-steps button { min-height: 40px; padding: 4px 6px; width: auto; }
+  .ss-steps button span { display: none; }
+  .ss-steps button.cur span { display: inline; }
+  .ss-side { container-type: normal; overflow: visible; }
+  .ss-cap { padding: 10px 12px; }
+  .ss-btn { min-height: 44px; padding: 0 14px; font-size: 15px; }
+  .ss-btn.play { min-width: 0; }
+  .ss-progress, .ss-count { display: none; }
+  .ss-ctl .ss-btn.ghost { margin-left: auto; }
+  .p-see, .p-try-scene { height: auto; }
+}
 .p-h { font-size: clamp(18px, 2vw, 24px); text-align: center; }
 .p-h small { font-size: 13px; color: var(--faint); font-weight: 500; font-family: var(--font-body); margin-left: 6px; }
-.p-dots { display: flex; justify-content: center; gap: 10px; }
+.p-dots { display: flex; align-items: center; gap: 10px; margin-left: 6px; }
+.p-dots span { font-size: 13px; color: var(--faint); }
 .p-dots button { width: 12px; height: 12px; padding: 0; border-radius: 50%; border: 0; background: var(--line-2); cursor: pointer; }
 .p-dots button[aria-selected="true"] { background: var(--brand); }
 .p-qs { display: grid; gap: 14px; max-width: 860px; width: 100%; margin: 0 auto; }
